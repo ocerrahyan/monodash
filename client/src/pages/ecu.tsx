@@ -408,7 +408,7 @@ export default function EcuPage() {
 
         <SectionHeader title="Nitrous" />
         <ParamRow label="Nitrous Enabled" configKey="nitrousEnabled" config={config} onChange={handleChange} testId="ecu-nitrous-enabled" />
-        <ParamRow label="Shot Size" configKey="nitrousHpAdder" config={config} onChange={handleChange} unit="hp" step={5} min={10} max={300} testId="ecu-nitrous-shot-size" />
+        <ParamRow label="Shot Size" configKey="nitrousHpAdder" config={config} onChange={handleChange} unit="hp" step={25} min={25} max={2000} testId="ecu-nitrous-shot-size" />
         <ParamRow label="Activation RPM" configKey="nitrousActivationRpm" config={config} onChange={handleChange} unit="rpm" step={100} min={1000} max={8000} testId="ecu-nitrous-activation-rpm" />
         <ParamRow label="Full Throttle Only" configKey="nitrousFullThrottleOnly" config={config} onChange={handleChange} testId="ecu-nitrous-fto" />
 
