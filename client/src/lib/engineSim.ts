@@ -117,6 +117,23 @@ const IDLE_RPM = 750;
 const VTEC_RPM = 5500;
 const COMPRESSION_RATIO = 10.2;
 
+const WHEELBASE_M = 2.620;
+const CG_HEIGHT_M = 0.48;
+const FRONT_WEIGHT_BIAS = 0.61;
+const TIRE_GRIP_COEFF = 0.85;
+const OPTIMAL_SLIP_RATIO = 0.10;
+const SHIFT_TIME_S = 0.25;
+const GRAVITY = 9.81;
+
+function tireGripFromSlip(slipRatio: number): number {
+  const absSlip = Math.abs(slipRatio);
+  if (absSlip <= OPTIMAL_SLIP_RATIO) {
+    return TIRE_GRIP_COEFF;
+  }
+  const fadeoff = (absSlip - OPTIMAL_SLIP_RATIO) / 0.40;
+  return TIRE_GRIP_COEFF * Math.max(0.60, 1 - fadeoff * 0.35);
+}
+
 const B16A2_TORQUE_MAP: [number, number][] = [
   [750, 40], [1000, 50], [1500, 58], [2000, 67], [2500, 75],
   [3000, 82], [3500, 88], [4000, 93], [4500, 96], [5000, 99],
@@ -160,6 +177,8 @@ export function createEngineSimulation() {
   let qmActive = false;
   let prevSpeedMps = 0;
   let currentGear = 0;
+  let shiftTimer = 0;
+  let wheelSpeedMps = 0;
 
   function setThrottle(value: number) {
     throttle = clamp(value, 0, 1);
@@ -174,6 +193,8 @@ export function createEngineSimulation() {
     qmActive = true;
     prevSpeedMps = 0;
     currentGear = 0;
+    shiftTimer = 0;
+    wheelSpeedMps = 0;
   }
 
   function resetQuarterMile() {
@@ -186,17 +207,24 @@ export function createEngineSimulation() {
     throttle = 0;
     targetRpm = IDLE_RPM;
     currentGear = 0;
+    shiftTimer = 0;
+    wheelSpeedMps = 0;
   }
 
   function update(deltaMs: number): EngineState {
     const dt = deltaMs / 1000;
 
     if (qmActive && qmET === null) {
+      if (shiftTimer > 0) {
+        shiftTimer -= dt;
+        if (shiftTimer < 0) shiftTimer = 0;
+      }
+
       const gearRatio = GEAR_RATIOS[currentGear];
       const totalRatio = gearRatio * FINAL_DRIVE_RATIO;
+      const wheelRadius = TIRE_RADIUS_M;
 
-      const wheelRps = speedMps / (TIRE_CIRCUMFERENCE_FT * 0.3048);
-      const drivenRpm = wheelRps * 60 * totalRatio;
+      const drivenRpm = (speedMps / wheelRadius) * (60 / (2 * Math.PI)) * totalRatio;
 
       const launchRpm = 1500 + throttle * 4500;
       const clutchSlipThreshold = 3000;
@@ -211,16 +239,34 @@ export function createEngineSimulation() {
 
       if (currentRpm >= REDLINE && currentGear < GEAR_RATIOS.length - 1) {
         currentGear++;
+        shiftTimer = SHIFT_TIME_S;
       }
 
-      const torqueFtLb = getB16Torque(currentRpm, throttle);
-      const engineTorqueNm = torqueFtLb * 1.3558;
+      let wheelForceN = 0;
+      if (shiftTimer <= 0) {
+        const torqueFtLb = getB16Torque(currentRpm, throttle);
+        const engineTorqueNm = torqueFtLb * 1.3558;
+        wheelForceN = (engineTorqueNm * totalRatio * (1 - DRIVETRAIN_LOSS)) / wheelRadius;
+      }
 
-      const wheelRadius = TIRE_DIAMETER_IN * 0.0254 / 2;
-      const wheelForceN = (engineTorqueNm * totalRatio * (1 - DRIVETRAIN_LOSS)) / wheelRadius;
+      const prevAccelMps2 = dt > 0 && speedMps > 0.05 ? (speedMps - prevSpeedMps) / dt : 0;
+      const weightTransferN = (VEHICLE_MASS_KG * Math.max(prevAccelMps2, 0) * CG_HEIGHT_M) / WHEELBASE_M;
+      const staticFrontLoadN = VEHICLE_MASS_KG * GRAVITY * FRONT_WEIGHT_BIAS;
+      const frontAxleLoadN = Math.max(staticFrontLoadN - weightTransferN, VEHICLE_MASS_KG * GRAVITY * 0.35);
+
+      const maxTractionForceN = frontAxleLoadN * TIRE_GRIP_COEFF;
+
+      if (wheelForceN > maxTractionForceN) {
+        wheelSpeedMps = currentRpm * 2 * Math.PI * wheelRadius / (totalRatio * 60);
+        const slipRatio = speedMps > 0.5
+          ? (wheelSpeedMps - speedMps) / speedMps
+          : 0.20;
+        const degradedGrip = tireGripFromSlip(slipRatio);
+        wheelForceN = frontAxleLoadN * degradedGrip;
+      }
 
       const dragForceN = 0.5 * AIR_DENSITY * DRAG_COEFF * FRONTAL_AREA_M2 * speedMps * speedMps;
-      const rollingForceN = ROLLING_RESISTANCE * VEHICLE_MASS_KG * 9.81;
+      const rollingForceN = ROLLING_RESISTANCE * VEHICLE_MASS_KG * GRAVITY;
 
       const netForceN = wheelForceN - dragForceN - rollingForceN;
       const accelMps2 = netForceN / EFFECTIVE_MASS_KG;
