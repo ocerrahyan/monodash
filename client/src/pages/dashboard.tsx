@@ -5,6 +5,51 @@ import { sharedSim } from "@/lib/sharedSim";
 import { EngineSound } from "@/lib/engineSound";
 import { Button } from "@/components/ui/button";
 
+function useActiveCount() {
+  const [count, setCount] = useState<number>(0);
+  const sessionIdRef = useRef<string>("");
+
+  useEffect(() => {
+    let id = sessionStorage.getItem("sim_session_id");
+    if (!id) {
+      id = crypto.randomUUID();
+      sessionStorage.setItem("sim_session_id", id);
+    }
+    sessionIdRef.current = id;
+
+    const beat = async () => {
+      try {
+        const res = await fetch("/api/heartbeat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: sessionIdRef.current }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setCount(data.activeCount);
+        }
+      } catch {}
+    };
+
+    beat();
+    const interval = setInterval(beat, 30_000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        beat();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
+  return count;
+}
+
 interface GaugeProps {
   label: string;
   value: string | number;
@@ -68,6 +113,7 @@ export default function Dashboard() {
   const soundFadedRef = useRef(false);
   const finishStateRef = useRef<EngineState | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeCount = useActiveCount();
 
   useEffect(() => {
     soundRef.current = new EngineSound();
@@ -157,7 +203,14 @@ export default function Dashboard() {
     <div className="fixed inset-0 bg-black text-white flex flex-col select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
       <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="gauge-scroll-area">
         <div className="flex items-center justify-between px-3 pt-2 pb-1 gap-2">
-          <span className="text-[10px] tracking-[0.3em] uppercase opacity-60 font-mono">B16A2 DOHC VTEC</span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] tracking-[0.3em] uppercase opacity-60 font-mono">B16A2 DOHC VTEC</span>
+            {activeCount > 0 && (
+              <span className="text-[8px] tracking-wider uppercase opacity-40 font-mono" data-testid="text-live-count">
+                {activeCount} LIVE {activeCount === 1 ? "TUNER" : "TUNERS"}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleSoundToggle}

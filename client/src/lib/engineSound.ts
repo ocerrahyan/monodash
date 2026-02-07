@@ -45,6 +45,7 @@ export class EngineSound {
   private revLimiterPhase = 0;
   private lastUpdateTime = 0;
   private lastBovTime = 0;
+  private fading = false;
 
   constructor() {}
 
@@ -226,7 +227,7 @@ export class EngineSound {
     currentGear: number,
     quarterMileActive: boolean
   ): void {
-    if (!this.ctx || !this.enabled) return;
+    if (!this.ctx || !this.enabled || this.fading) return;
 
     const now = this.ctx.currentTime;
     const fundamentalFreq = Math.max((rpm / 60) * 2, 20);
@@ -467,22 +468,28 @@ export class EngineSound {
   }
 
   private fadeToken = 0;
+  private fadeTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   fadeOut(durationMs: number = 500): void {
     if (!this.ctx || !this.masterGain) return;
+    this.fading = true;
     const token = ++this.fadeToken;
     const now = this.ctx.currentTime;
     this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
     this.masterGain.gain.linearRampToValueAtTime(0, now + durationMs / 1000);
-    setTimeout(() => {
+    if (this.fadeTimeoutId !== null) clearTimeout(this.fadeTimeoutId);
+    this.fadeTimeoutId = setTimeout(() => {
       if (this.fadeToken === token) {
         this.enabled = false;
+        this.fading = false;
       }
+      this.fadeTimeoutId = null;
     }, durationMs);
   }
 
   cancelFade(): void {
     this.fadeToken++;
+    this.fading = false;
     if (this.ctx && this.masterGain) {
       this.masterGain.gain.cancelScheduledValues(this.ctx.currentTime);
     }
@@ -501,6 +508,11 @@ export class EngineSound {
 
   destroy(): void {
     this.enabled = false;
+    this.fading = false;
+    if (this.fadeTimeoutId !== null) {
+      clearTimeout(this.fadeTimeoutId);
+      this.fadeTimeoutId = null;
+    }
 
     if (this.osc1) { try { this.osc1.stop(); } catch {} this.osc1.disconnect(); this.osc1 = null; }
     if (this.osc2) { try { this.osc2.stop(); } catch {} this.osc2.disconnect(); this.osc2 = null; }

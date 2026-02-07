@@ -4,20 +4,27 @@
 A minimalist, text-only dashboard that simulates a 2000 Honda Civic Si (B16A2) engine in real-time. Pure black screen with white monospace numbers. Designed for iPhone viewing. Includes quarter-mile drag simulation with ~68 live parameters and a fully programmable ECU tuning page.
 
 ## Architecture
-- **Frontend only** - no backend data persistence needed
-- Engine simulation runs client-side via `requestAnimationFrame`
+- Frontend engine simulation runs client-side via `requestAnimationFrame`
+- Backend (Express) handles live player presence via heartbeat API + PostgreSQL
 - ~68 parameters update in real-time based on physics model
 - Scrollable gauge area with fixed bottom controls (throttle + launch button)
 - Shared singleton simulation instance between Dashboard and ECU pages
 - ECU config changes apply in real-time to the simulation
+- ECU presets stored in localStorage (per-device)
+- Live player count tracked via session heartbeats in PostgreSQL
 
 ## Key Files
-- `client/src/pages/dashboard.tsx` - Scrollable dashboard UI with sectioned gauge grid, sound toggle, and fixed bottom controls
+- `client/src/pages/dashboard.tsx` - Scrollable dashboard UI with sectioned gauge grid, sound toggle, live player count, and fixed bottom controls
 - `client/src/lib/engineSound.ts` - Web Audio API engine sound synthesis (multi-oscillator, VTEC crossover, rev limiter, decel pops, anti-lag bangs)
-- `client/src/pages/ecu.tsx` - Full ECU tuning page with ~80 configurable parameters organized into 14 sections
+- `client/src/pages/ecu.tsx` - Full ECU tuning page with ~96 configurable parameters organized into 14 sections, preset save/load
 - `client/src/lib/engineSim.ts` - Engine physics simulation with EcuConfig interface, configurable constants
 - `client/src/lib/sharedSim.ts` - Shared singleton simulation instance for cross-page state
+- `client/src/lib/presets.ts` - ECU preset system (built-in + custom presets via localStorage)
 - `client/src/App.tsx` - App entry point, routes to dashboard (/) and ECU (/ecu)
+- `server/routes.ts` - API routes for heartbeat and active player count
+- `server/storage.ts` - Database storage for active sessions
+- `server/db.ts` - PostgreSQL connection via drizzle-orm
+- `shared/schema.ts` - Database schema (active_sessions table)
 
 ## Engine: Honda B16A2
 - 1.6L DOHC VTEC inline-4
@@ -154,6 +161,10 @@ Peak G, Peak Wheel HP
 - "DEFAULTS" button on ECU page resets all parameters to stock B16A2 values
 
 ## Recent Changes
+- 2026-02-07: Added live player count (shows how many tuners are using the app worldwide via heartbeat API)
+- 2026-02-07: Added ECU preset system — 6 built-in presets (Stock, Street Turbo, Drag Build, All-Motor, Supercharged, NOS Street, Max Attack) + save/load custom presets
+- 2026-02-07: Fixed sound hanging after QM finish — fading flag prevents update() from overriding fade ramp
+- 2026-02-07: Fixed traction model — more power now produces faster ETs (gentler grip degradation, reduced weight transfer severity)
 - 2026-02-07: Added quarter-mile results overlay with all key stats (ET, trap, splits, peak RPM/WHP/G/boost/speed/slip) and NEW RUN button
 - 2026-02-07: Engine sound fades out smoothly when quarter-mile finishes (no more hanging sound)
 - 2026-02-07: Fixed tire slip to persist through 2nd+ gears during quarter-mile runs (force-based calculation replaces circular speed-based method)

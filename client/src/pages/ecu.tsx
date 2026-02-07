@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "wouter";
 import { type EcuConfig, getDefaultEcuConfig } from "@/lib/engineSim";
 import { sharedSim } from "@/lib/sharedSim";
+import { getAllPresets, savePreset, deletePreset, type Preset } from "@/lib/presets";
 
 type ConfigKey = keyof EcuConfig;
 
@@ -212,7 +213,14 @@ function SectionHeader({ title }: { title: string }) {
 
 export default function EcuPage() {
   const [config, setConfig] = useState<EcuConfig>(() => sharedSim.getEcuConfig());
-  const [saved, setSaved] = useState(false);
+  const [presets, setPresets] = useState<Preset[]>(() => getAllPresets());
+  const [showSave, setShowSave] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [saveMsg, setSaveMsg] = useState("");
+
+  const refreshPresets = useCallback(() => {
+    setPresets(getAllPresets());
+  }, []);
 
   const handleChange = useCallback((key: ConfigKey, value: any) => {
     setConfig((prev) => {
@@ -220,22 +228,38 @@ export default function EcuPage() {
       sharedSim.setEcuConfig(next);
       return next;
     });
-    setSaved(false);
   }, []);
 
   const handleReset = useCallback(() => {
     const defaults = getDefaultEcuConfig();
     setConfig(defaults);
     sharedSim.setEcuConfig(defaults);
-    setSaved(false);
   }, []);
 
-  useEffect(() => {
-    if (saved) {
-      const t = setTimeout(() => setSaved(false), 2000);
-      return () => clearTimeout(t);
-    }
-  }, [saved]);
+  const handleLoadPreset = useCallback((preset: Preset) => {
+    const newConfig = { ...preset.config };
+    setConfig(newConfig);
+    sharedSim.setEcuConfig(newConfig);
+    setSaveMsg(`Loaded: ${preset.name}`);
+    setTimeout(() => setSaveMsg(""), 2000);
+  }, []);
+
+  const handleSavePreset = useCallback(() => {
+    if (!saveName.trim()) return;
+    savePreset(saveName.trim(), config);
+    setSaveName("");
+    setShowSave(false);
+    refreshPresets();
+    setSaveMsg(`Saved: ${saveName.trim()}`);
+    setTimeout(() => setSaveMsg(""), 2000);
+  }, [saveName, config, refreshPresets]);
+
+  const handleDeletePreset = useCallback((name: string) => {
+    deletePreset(name);
+    refreshPresets();
+    setSaveMsg(`Deleted: ${name}`);
+    setTimeout(() => setSaveMsg(""), 2000);
+  }, [refreshPresets]);
 
   return (
     <div className="fixed inset-0 bg-black text-white flex flex-col select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -254,6 +278,73 @@ export default function EcuPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="ecu-scroll-area">
+
+        <SectionHeader title="Presets" />
+        <div className="px-2 pb-2" data-testid="presets-section">
+          <div className="flex flex-wrap gap-1 mb-2">
+            {presets.map((p) => (
+              <div key={p.name} className="flex items-center gap-0.5">
+                <button
+                  onClick={() => handleLoadPreset(p)}
+                  className="text-[9px] font-mono px-2 py-1 border border-white/25 text-white/80 active:text-white"
+                  data-testid={`preset-load-${p.name.replace(/\s+/g, '-').toLowerCase()}`}
+                >
+                  {p.name.toUpperCase()}
+                </button>
+                {!p.builtIn && (
+                  <button
+                    onClick={() => handleDeletePreset(p.name)}
+                    className="text-[9px] font-mono px-1 py-1 border border-white/15 text-white/40 active:text-white"
+                    data-testid={`preset-delete-${p.name.replace(/\s+/g, '-').toLowerCase()}`}
+                  >
+                    X
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          {showSave ? (
+            <div className="flex items-center gap-1">
+              <input
+                type="text"
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSavePreset(); }}
+                placeholder="Preset name..."
+                className="bg-transparent text-white text-[10px] font-mono border border-white/30 px-2 py-1 flex-1 outline-none focus:border-white/60"
+                autoFocus
+                data-testid="input-preset-name"
+              />
+              <button
+                onClick={handleSavePreset}
+                className="text-[9px] font-mono px-2 py-1 border border-white/30 text-white/80"
+                data-testid="button-preset-save-confirm"
+              >
+                SAVE
+              </button>
+              <button
+                onClick={() => { setShowSave(false); setSaveName(""); }}
+                className="text-[9px] font-mono px-2 py-1 border border-white/15 text-white/50"
+                data-testid="button-preset-save-cancel"
+              >
+                CANCEL
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowSave(true)}
+              className="text-[9px] font-mono px-2 py-1 border border-white/25 text-white/70 active:text-white w-full"
+              data-testid="button-save-preset"
+            >
+              SAVE CURRENT AS PRESET
+            </button>
+          )}
+          {saveMsg && (
+            <div className="text-[9px] font-mono text-white/60 mt-1 text-center" data-testid="text-save-msg">
+              {saveMsg}
+            </div>
+          )}
+        </div>
 
         <SectionHeader title="Rev Limits" />
         <ParamRow label="Redline RPM" configKey="redlineRpm" config={config} onChange={handleChange} unit="rpm" step={100} min={3000} max={12000} testId="ecu-redline" />
@@ -366,16 +457,16 @@ export default function EcuPage() {
         <ParamRow label="Shift Time" configKey="shiftTimeMs" config={config} onChange={handleChange} unit="ms" step={25} min={50} max={1000} testId="ecu-shift-time" />
 
         <SectionHeader title="Cooling" />
-        <ParamRow label="Fan On Temp" configKey="fanOnTemp" config={config} onChange={handleChange} unit="°F" step={5} min={150} max={250} testId="ecu-fan-on" />
-        <ParamRow label="Fan Off Temp" configKey="fanOffTemp" config={config} onChange={handleChange} unit="°F" step={5} min={140} max={240} testId="ecu-fan-off" />
-        <ParamRow label="Overtemp Warning" configKey="overtempWarning" config={config} onChange={handleChange} unit="°F" step={5} min={180} max={280} testId="ecu-overtemp-warn" />
+        <ParamRow label="Fan On Temp" configKey="fanOnTemp" config={config} onChange={handleChange} unit="F" step={5} min={150} max={250} testId="ecu-fan-on" />
+        <ParamRow label="Fan Off Temp" configKey="fanOffTemp" config={config} onChange={handleChange} unit="F" step={5} min={140} max={240} testId="ecu-fan-off" />
+        <ParamRow label="Overtemp Warning" configKey="overtempWarning" config={config} onChange={handleChange} unit="F" step={5} min={180} max={280} testId="ecu-overtemp-warn" />
         <ParamRow label="Overtemp Enrich" configKey="overtempEnrichPct" config={config} onChange={handleChange} unit="%" step={1} min={0} max={30} testId="ecu-overtemp-enrich" />
 
         <SectionHeader title="Sensor Calibration" />
         <ParamRow label="MAP Max" configKey="mapSensorMaxKpa" config={config} onChange={handleChange} unit="kPa" step={5} min={50} max={400} testId="ecu-map-max" />
         <ParamRow label="MAP Min" configKey="mapSensorMinKpa" config={config} onChange={handleChange} unit="kPa" step={1} min={0} max={50} testId="ecu-map-min" />
         <ParamRow label="O2 Sensor Type" configKey="o2SensorType" config={config} onChange={handleChange} testId="ecu-o2-type" />
-        <ParamRow label="Coolant Offset" configKey="coolantSensorOffset" config={config} onChange={handleChange} unit="°F" step={1} min={-20} max={20} testId="ecu-coolant-offset" />
+        <ParamRow label="Coolant Offset" configKey="coolantSensorOffset" config={config} onChange={handleChange} unit="F" step={1} min={-20} max={20} testId="ecu-coolant-offset" />
 
         <SectionHeader title="Engine" />
         <ParamRow label="Compression" configKey="compressionRatio" config={config} onChange={handleChange} unit=":1" step={0.1} min={7} max={15} testId="ecu-compression" />
@@ -383,8 +474,8 @@ export default function EcuPage() {
         <div className="h-6" />
       </div>
 
-      <div className="shrink-0 px-3 py-2 border-t border-white/10 bg-black flex items-center justify-between">
-        <span className="text-[9px] tracking-wider uppercase opacity-30 font-mono">CHANGES APPLY IN REAL-TIME</span>
+      <div className="shrink-0 px-3 py-2 border-t border-white/10 bg-black flex items-center justify-between gap-2">
+        <span className="text-[9px] tracking-wider uppercase opacity-30 font-mono">{saveMsg || "CHANGES APPLY IN REAL-TIME"}</span>
         <button
           onClick={handleReset}
           className="text-[9px] tracking-wider uppercase opacity-40 font-mono border border-white/15 px-2 py-0.5"

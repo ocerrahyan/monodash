@@ -374,8 +374,8 @@ function tireGripFromSlip(slipRatio: number, gripCoeff: number, optimalSlip: num
   if (absSlip <= optimalSlip) {
     return gripCoeff;
   }
-  const fadeoff = (absSlip - optimalSlip) / 0.40;
-  return gripCoeff * Math.max(0.60, 1 - fadeoff * 0.35);
+  const fadeoff = (absSlip - optimalSlip) / 0.60;
+  return gripCoeff * Math.max(0.78, 1 - fadeoff * 0.20);
 }
 
 const B16A2_TORQUE_MAP: [number, number][] = [
@@ -782,7 +782,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       const prevAccelMps2 = dt > 0 && speedMps > 0.05 ? (speedMps - prevSpeedMps) / dt : 0;
       weightTransferN = (derived.vehicleMassKg * Math.max(prevAccelMps2, 0) * config.cgHeightM) / config.wheelbaseM;
       const staticFrontLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
-      frontAxleLoadN = Math.max(staticFrontLoadN - weightTransferN, derived.vehicleMassKg * GRAVITY * 0.35);
+      frontAxleLoadN = Math.max(staticFrontLoadN - weightTransferN * 0.7, derived.vehicleMassKg * GRAVITY * 0.45);
 
       maxTractionForceN = frontAxleLoadN * config.tireGripCoeff;
 
