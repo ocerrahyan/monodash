@@ -94,7 +94,7 @@ function getCylinderPressure(crankAngle: number, throttle: number, rpm: number):
   return lerp(30, 16, progress);
 }
 
-const TIRE_DIAMETER_IN = 26;
+const TIRE_DIAMETER_IN = 23.5;
 const TIRE_CIRCUMFERENCE_FT = (TIRE_DIAMETER_IN * Math.PI) / 12;
 const FINAL_DRIVE_RATIO = 3.73;
 const GEAR_RATIOS = [3.42, 2.14, 1.45, 1.0, 0.78];
