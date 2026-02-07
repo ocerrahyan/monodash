@@ -1,18 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createEngineSimulation, type EngineState } from "@/lib/engineSim";
+import { Button } from "@/components/ui/button";
 
 interface GaugeProps {
   label: string;
   value: string | number;
   unit: string;
   testId: string;
+  highlight?: boolean;
 }
 
-function Gauge({ label, value, unit, testId }: GaugeProps) {
+function Gauge({ label, value, unit, testId, highlight }: GaugeProps) {
   return (
     <div className="flex flex-col items-center justify-center p-1" data-testid={testId}>
       <span className="text-[9px] tracking-wider uppercase opacity-40 leading-tight text-center font-mono">{label}</span>
-      <span className="text-[18px] font-mono font-bold leading-tight tabular-nums" data-testid={`value-${testId}`}>{value}</span>
+      <span className={`text-[18px] font-mono font-bold leading-tight tabular-nums ${highlight ? "opacity-100" : ""}`} data-testid={`value-${testId}`}>{value}</span>
       <span className="text-[8px] tracking-wide uppercase opacity-30 leading-tight font-mono">{unit}</span>
     </div>
   );
@@ -45,7 +47,19 @@ export default function Dashboard() {
     simRef.current.setThrottle(val);
   }, []);
 
+  const handleLaunch = useCallback(() => {
+    if (state?.quarterMileActive) {
+      simRef.current.resetQuarterMile();
+      setThrottle(0);
+    } else {
+      simRef.current.startQuarterMile();
+      setThrottle(100);
+    }
+  }, [state?.quarterMileActive]);
+
   if (!state) return null;
+
+  const qmFinished = state.quarterMileET !== null;
 
   return (
     <div className="fixed inset-0 bg-black text-white flex flex-col select-none overflow-hidden" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -53,7 +67,7 @@ export default function Dashboard() {
         <div className="text-[10px] tracking-[0.3em] uppercase opacity-30">Single Cylinder 4-Stroke</div>
       </div>
 
-      <div className="flex-1 grid grid-cols-4 grid-rows-5 gap-0" data-testid="gauge-grid">
+      <div className="flex-1 grid grid-cols-4 gap-0" style={{ gridTemplateRows: "repeat(5, 1fr) auto" }} data-testid="gauge-grid">
         <Gauge label="RPM" value={state.rpm} unit="rev/min" testId="gauge-rpm" />
         <Gauge label="Throttle" value={state.throttlePosition} unit="%" testId="gauge-throttle" />
         <Gauge label="Crank" value={state.crankAngle} unit="deg" testId="gauge-crank" />
@@ -78,9 +92,18 @@ export default function Dashboard() {
         <Gauge label="Torque" value={state.torque} unit="ft-lb" testId="gauge-torque" />
         <Gauge label="HP" value={state.horsepower} unit="hp" testId="gauge-hp" />
         <Gauge label="Fuel Rate" value={state.fuelConsumption} unit="g/s" testId="gauge-fuel" />
+
+        <div className="col-span-4 border-t border-white/10 grid grid-cols-6 gap-0 py-1">
+          <Gauge label="Tire RPM" value={state.tireRpm} unit="rev/min" testId="gauge-tire-rpm" />
+          <Gauge label="Speed" value={state.speedMph} unit="mph" testId="gauge-speed" />
+          <Gauge label="Distance" value={state.distanceFt} unit="ft" testId="gauge-distance" />
+          <Gauge label="Time" value={state.elapsedTime} unit="sec" testId="gauge-elapsed" />
+          <Gauge label="Accel" value={state.accelerationG} unit="g" testId="gauge-accel" />
+          <Gauge label="1/4 ET" value={state.quarterMileET !== null ? state.quarterMileET : "---"} unit="sec" testId="gauge-qm-et" highlight={qmFinished} />
+        </div>
       </div>
 
-      <div className="px-4 pb-4 pt-1">
+      <div className="px-4 pb-3 pt-1 space-y-2">
         <div className="flex items-center gap-3">
           <span className="text-[9px] tracking-wider uppercase opacity-40 font-mono w-16">Throttle</span>
           <input
@@ -89,7 +112,8 @@ export default function Dashboard() {
             max="100"
             value={throttle}
             onChange={handleThrottle}
-            className="flex-1 h-1 appearance-none bg-white/10 rounded-none outline-none cursor-pointer"
+            disabled={state.quarterMileActive}
+            className="flex-1 h-1 appearance-none bg-white/10 rounded-none outline-none cursor-pointer disabled:opacity-30"
             style={{
               WebkitAppearance: "none",
               background: `linear-gradient(to right, white ${throttle}%, rgba(255,255,255,0.1) ${throttle}%)`,
@@ -98,6 +122,15 @@ export default function Dashboard() {
           />
           <span className="text-[11px] font-mono tabular-nums w-8 text-right opacity-60" data-testid="text-throttle-value">{Math.round(throttle)}%</span>
         </div>
+
+        <Button
+          onClick={handleLaunch}
+          variant="outline"
+          className="w-full text-[11px] tracking-[0.2em] uppercase font-mono bg-transparent text-white/70 border-white/20"
+          data-testid="button-launch"
+        >
+          {state.quarterMileActive ? (qmFinished ? `FINISHED ${state.quarterMileET}s — TAP TO RESET` : "RUNNING — TAP TO RESET") : "LAUNCH 1/4 MILE"}
+        </Button>
       </div>
     </div>
   );

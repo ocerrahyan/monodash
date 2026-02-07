@@ -19,6 +19,13 @@ export interface EngineState {
   torque: number;
   horsepower: number;
   fuelConsumption: number;
+  tireRpm: number;
+  speedMph: number;
+  distanceFt: number;
+  elapsedTime: number;
+  accelerationG: number;
+  quarterMileET: number | null;
+  quarterMileActive: boolean;
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -87,6 +94,27 @@ function getCylinderPressure(crankAngle: number, throttle: number, rpm: number):
   return lerp(30, 16, progress);
 }
 
+const TIRE_DIAMETER_IN = 26;
+const TIRE_CIRCUMFERENCE_FT = (TIRE_DIAMETER_IN * Math.PI) / 12;
+const FINAL_DRIVE_RATIO = 3.73;
+const GEAR_RATIOS = [3.42, 2.14, 1.45, 1.0, 0.78];
+const VEHICLE_MASS_LB = 3200;
+const VEHICLE_MASS_KG = VEHICLE_MASS_LB * 0.4536;
+const DRAG_COEFF = 0.35;
+const FRONTAL_AREA_M2 = 2.2;
+const AIR_DENSITY = 1.225;
+const ROLLING_RESISTANCE = 0.015;
+const QUARTER_MILE_FT = 1320;
+const DRIVETRAIN_LOSS = 0.15;
+
+function getGear(speedMph: number): number {
+  if (speedMph < 15) return 0;
+  if (speedMph < 35) return 1;
+  if (speedMph < 60) return 2;
+  if (speedMph < 90) return 3;
+  return 4;
+}
+
 export function createEngineSimulation() {
   let crankAngle = 0;
   let currentRpm = 850;
@@ -96,17 +124,93 @@ export function createEngineSimulation() {
   let oilTemp = 210;
   let running = true;
 
+  let speedMps = 0;
+  let distanceFt = 0;
+  let qmElapsedTime = 0;
+  let qmET: number | null = null;
+  let qmActive = false;
+  let prevSpeedMps = 0;
+
   function setThrottle(value: number) {
     throttle = clamp(value, 0, 1);
     targetRpm = 850 + throttle * 5150;
   }
 
+  function startQuarterMile() {
+    speedMps = 0;
+    distanceFt = 0;
+    qmElapsedTime = 0;
+    qmET = null;
+    qmActive = true;
+    prevSpeedMps = 0;
+    throttle = 1.0;
+    targetRpm = 6000;
+  }
+
+  function resetQuarterMile() {
+    speedMps = 0;
+    distanceFt = 0;
+    qmElapsedTime = 0;
+    qmET = null;
+    qmActive = false;
+    prevSpeedMps = 0;
+    throttle = 0;
+    targetRpm = 850;
+  }
+
   function update(deltaMs: number): EngineState {
     const dt = deltaMs / 1000;
 
-    const rpmAccelRate = throttle > (currentRpm - 850) / 5150 ? 3000 : 4000;
-    currentRpm = lerp(currentRpm, targetRpm, clamp(dt * rpmAccelRate / 5000, 0, 0.15));
-    currentRpm = clamp(currentRpm, 800, 6200);
+    if (qmActive && qmET === null) {
+      const speedMph = speedMps * 2.237;
+      const gear = getGear(speedMph);
+      const gearRatio = GEAR_RATIOS[gear];
+      const totalRatio = gearRatio * FINAL_DRIVE_RATIO;
+
+      const wheelRps = speedMps / (TIRE_CIRCUMFERENCE_FT * 0.3048);
+      const drivenRpm = wheelRps * 60 * totalRatio;
+
+      const launchRpm = 4500;
+      const clutchSlipThreshold = 2000;
+      let effectiveRpm: number;
+      if (drivenRpm < clutchSlipThreshold) {
+        const blend = drivenRpm / clutchSlipThreshold;
+        effectiveRpm = lerp(launchRpm, drivenRpm, blend * blend);
+      } else {
+        effectiveRpm = drivenRpm;
+      }
+      currentRpm = clamp(Math.max(effectiveRpm, 1500), 1500, 6200);
+
+      const baseTorque = 15 + throttle * 50;
+      const rpmFactor = 1 - Math.pow((currentRpm - 3500) / 3500, 2) * 0.3;
+      const engineTorqueNm = baseTorque * rpmFactor * 1.3558;
+
+      const wheelRadius = TIRE_DIAMETER_IN * 0.0254 / 2;
+      const wheelForceN = (engineTorqueNm * totalRatio * (1 - DRIVETRAIN_LOSS)) / wheelRadius;
+
+      const dragForceN = 0.5 * AIR_DENSITY * DRAG_COEFF * FRONTAL_AREA_M2 * speedMps * speedMps;
+      const rollingForceN = ROLLING_RESISTANCE * VEHICLE_MASS_KG * 9.81;
+
+      const netForceN = wheelForceN - dragForceN - rollingForceN;
+      const accelMps2 = netForceN / VEHICLE_MASS_KG;
+
+      prevSpeedMps = speedMps;
+      speedMps = Math.max(speedMps + accelMps2 * dt, 0);
+      const avgSpeedMps = (prevSpeedMps + speedMps) / 2;
+      distanceFt += avgSpeedMps * dt * 3.28084;
+      qmElapsedTime += dt;
+
+      if (distanceFt >= QUARTER_MILE_FT) {
+        const overshootFt = distanceFt - QUARTER_MILE_FT;
+        const overshootTime = avgSpeedMps > 0 ? (overshootFt * 0.3048) / avgSpeedMps : 0;
+        qmET = qmElapsedTime - overshootTime;
+        distanceFt = QUARTER_MILE_FT;
+      }
+    } else if (!qmActive) {
+      const rpmAccelRate = throttle > (currentRpm - 850) / 5150 ? 3000 : 4000;
+      currentRpm = lerp(currentRpm, targetRpm, clamp(dt * rpmAccelRate / 5000, 0, 0.15));
+      currentRpm = clamp(currentRpm, 800, 6200);
+    }
 
     const degreesPerSecond = currentRpm * 360 / 60;
     crankAngle = (crankAngle + degreesPerSecond * dt) % 720;
@@ -143,6 +247,14 @@ export function createEngineSimulation() {
     const volumetricEfficiency = 75 + throttle * 20 - Math.abs(currentRpm - 4000) / 4000 * 15;
     const fuelConsumption = (currentRpm * fuelInjectionPulse * 0.001) / 60;
 
+    const speedMph = speedMps * 2.237;
+    const gear = getGear(speedMph);
+    const gearRatio = GEAR_RATIOS[gear];
+    const totalRatio = gearRatio * FINAL_DRIVE_RATIO;
+    const tireRpm = qmActive ? (speedMps / (TIRE_CIRCUMFERENCE_FT * 0.3048)) * 60 : currentRpm / totalRatio;
+
+    const accelG = dt > 0 ? (speedMps - prevSpeedMps) / (dt * 9.81) : 0;
+
     return {
       rpm: Math.round(currentRpm),
       throttlePosition: Math.round(throttle * 100),
@@ -164,8 +276,15 @@ export function createEngineSimulation() {
       torque: Math.round(torque * 10) / 10,
       horsepower: Math.round(hp * 10) / 10,
       fuelConsumption: Math.round(fuelConsumption * 1000) / 1000,
+      tireRpm: Math.round(tireRpm),
+      speedMph: Math.round(speedMph * 10) / 10,
+      distanceFt: Math.round(distanceFt * 10) / 10,
+      elapsedTime: Math.round(qmElapsedTime * 1000) / 1000,
+      accelerationG: Math.round(clamp(accelG, 0, 5) * 100) / 100,
+      quarterMileET: qmET !== null ? Math.round(qmET * 1000) / 1000 : null,
+      quarterMileActive: qmActive,
     };
   }
 
-  return { update, setThrottle, isRunning: () => running };
+  return { update, setThrottle, startQuarterMile, resetQuarterMile, isRunning: () => running };
 }
