@@ -1,9 +1,64 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "wouter";
 import { type EcuConfig, getDefaultEcuConfig } from "@/lib/engineSim";
 import { sharedSim } from "@/lib/sharedSim";
 
 type ConfigKey = keyof EcuConfig;
+
+function EditableNumberInput({ value, onCommit, step, min, max, className, testId }: {
+  value: number;
+  onCommit: (v: number) => void;
+  step?: number;
+  min?: number;
+  max?: number;
+  className?: string;
+  testId?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(String(value));
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editing) {
+      setText(String(value));
+    }
+  }, [value, editing]);
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      inputMode="decimal"
+      value={editing ? text : String(value)}
+      onFocus={() => {
+        setEditing(true);
+        setText(String(value));
+        setTimeout(() => inputRef.current?.select(), 0);
+      }}
+      onChange={(e) => {
+        setText(e.target.value);
+      }}
+      onBlur={() => {
+        setEditing(false);
+        const parsed = parseFloat(text);
+        if (!isNaN(parsed)) {
+          let v = parsed;
+          if (min !== undefined) v = Math.max(min, v);
+          if (max !== undefined) v = Math.min(max, v);
+          onCommit(v);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      step={step}
+      className={className}
+      data-testid={testId}
+    />
+  );
+}
 
 interface ParamRowProps {
   label: string;
@@ -71,21 +126,14 @@ function ParamRow({ label, configKey, config, onChange, unit, step = 1, min, max
         >
           -
         </button>
-        <input
-          type="number"
+        <EditableNumberInput
           value={value as number}
-          onChange={(e) => {
-            let v = parseFloat(e.target.value);
-            if (isNaN(v)) return;
-            if (min !== undefined) v = Math.max(min, v);
-            if (max !== undefined) v = Math.min(max, v);
-            onChange(configKey, v);
-          }}
+          onCommit={(v) => onChange(configKey, v)}
           step={step}
           min={min}
           max={max}
           className="bg-transparent text-white/90 text-[11px] font-mono tabular-nums w-16 text-center border border-white/15 py-0.5 outline-none focus:border-white/40"
-          data-testid={`input-${testId}`}
+          testId={`input-${testId}`}
         />
         <button
           onClick={() => {
@@ -123,19 +171,16 @@ function ArrayParamRow({ label, configKey, config, onChange, unit, step = 0.001,
         {values.map((v, i) => (
           <div key={i} className="flex flex-col items-center">
             <span className="text-[7px] opacity-30 font-mono">{labels[i] || `${i + 1}`}</span>
-            <input
-              type="number"
+            <EditableNumberInput
               value={v}
-              onChange={(e) => {
-                const newVal = parseFloat(e.target.value);
-                if (isNaN(newVal)) return;
+              onCommit={(newVal) => {
                 const newArr = [...values];
                 newArr[i] = newVal;
                 onChange(configKey, newArr);
               }}
               step={step}
               className="bg-transparent text-white/90 text-[10px] font-mono tabular-nums w-12 text-center border border-white/15 py-0.5 outline-none focus:border-white/40"
-              data-testid={`input-${testId}-${i}`}
+              testId={`input-${testId}-${i}`}
             />
             {unit && <span className="text-[7px] opacity-20 font-mono">{unit}</span>}
           </div>
