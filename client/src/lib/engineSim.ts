@@ -87,6 +87,25 @@ export interface EcuConfig {
   coolantSensorOffset: number;
 
   compressionRatio: number;
+
+  vtecIntakeLiftMm: number;
+  vtecExhaustLiftMm: number;
+  vtecIntakeDuration: number;
+  vtecExhaustDuration: number;
+  lowCamIntakeLiftMm: number;
+  lowCamExhaustLiftMm: number;
+  lowCamIntakeDuration: number;
+  lowCamExhaustDuration: number;
+
+  superchargerEnabled: boolean;
+  superchargerType: 'centrifugal' | 'roots' | 'twinscrew';
+  superchargerMaxBoostPsi: number;
+  superchargerEfficiency: number;
+
+  nitrousEnabled: boolean;
+  nitrousHpAdder: number;
+  nitrousActivationRpm: number;
+  nitrousFullThrottleOnly: boolean;
 }
 
 export function getDefaultEcuConfig(): EcuConfig {
@@ -179,6 +198,25 @@ export function getDefaultEcuConfig(): EcuConfig {
     coolantSensorOffset: 0,
 
     compressionRatio: 10.2,
+
+    vtecIntakeLiftMm: 10.6,
+    vtecExhaustLiftMm: 9.4,
+    vtecIntakeDuration: 240,
+    vtecExhaustDuration: 228,
+    lowCamIntakeLiftMm: 7.6,
+    lowCamExhaustLiftMm: 7.0,
+    lowCamIntakeDuration: 210,
+    lowCamExhaustDuration: 200,
+
+    superchargerEnabled: false,
+    superchargerType: 'centrifugal',
+    superchargerMaxBoostPsi: 6,
+    superchargerEfficiency: 70,
+
+    nitrousEnabled: false,
+    nitrousHpAdder: 50,
+    nitrousActivationRpm: 3000,
+    nitrousFullThrottleOnly: true,
   };
 }
 
@@ -258,6 +296,8 @@ export interface EngineState {
   fuelCutActive: boolean;
   revLimitActive: boolean;
   turboEnabled: boolean;
+  nitrousActive: boolean;
+  superchargerEnabled: boolean;
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -351,6 +391,45 @@ function getB16Torque(rpm: number, throttlePos: number): number {
   const frac = (clamped - r0) / (r1 - r0);
   const wotTorque = t0 + (t1 - t0) * frac;
   return wotTorque * (0.1 + 0.9 * throttlePos);
+}
+
+function getCamTorqueMultiplier(rpm: number, vtecActive: boolean, config: EcuConfig): number {
+  const STOCK_LOW_INTAKE_LIFT = 7.6;
+  const STOCK_LOW_EXHAUST_LIFT = 7.0;
+  const STOCK_LOW_INTAKE_DURATION = 210;
+  const STOCK_LOW_EXHAUST_DURATION = 200;
+  const STOCK_VTEC_INTAKE_LIFT = 10.6;
+  const STOCK_VTEC_EXHAUST_LIFT = 9.4;
+  const STOCK_VTEC_INTAKE_DURATION = 240;
+  const STOCK_VTEC_EXHAUST_DURATION = 228;
+
+  if (!vtecActive) {
+    const intakeLiftRatio = clamp(config.lowCamIntakeLiftMm / STOCK_LOW_INTAKE_LIFT, 0.7, 1.4);
+    const exhaustLiftRatio = clamp(config.lowCamExhaustLiftMm / STOCK_LOW_EXHAUST_LIFT, 0.7, 1.4);
+    const avgLiftRatio = (intakeLiftRatio + exhaustLiftRatio) / 2;
+    const intakeDurationRatio = clamp(config.lowCamIntakeDuration / STOCK_LOW_INTAKE_DURATION, 0.8, 1.3);
+    const exhaustDurationRatio = clamp(config.lowCamExhaustDuration / STOCK_LOW_EXHAUST_DURATION, 0.8, 1.3);
+    const avgDurationRatio = (intakeDurationRatio + exhaustDurationRatio) / 2;
+    let multiplier = avgLiftRatio * 0.6 + avgDurationRatio * 0.4;
+    if (config.lowCamIntakeDuration > 220 && rpm < 3000) {
+      const penalty = (config.lowCamIntakeDuration - 220) / 200 * (1 - rpm / 3000);
+      multiplier *= (1 - penalty);
+    }
+    return multiplier;
+  } else {
+    const intakeLiftRatio = clamp(config.vtecIntakeLiftMm / STOCK_VTEC_INTAKE_LIFT, 0.7, 1.4);
+    const exhaustLiftRatio = clamp(config.vtecExhaustLiftMm / STOCK_VTEC_EXHAUST_LIFT, 0.7, 1.4);
+    const avgLiftRatio = (intakeLiftRatio + exhaustLiftRatio) / 2;
+    const intakeDurationRatio = clamp(config.vtecIntakeDuration / STOCK_VTEC_INTAKE_DURATION, 0.8, 1.3);
+    const exhaustDurationRatio = clamp(config.vtecExhaustDuration / STOCK_VTEC_EXHAUST_DURATION, 0.8, 1.3);
+    const avgDurationRatio = (intakeDurationRatio + exhaustDurationRatio) / 2;
+    let multiplier = avgLiftRatio * 0.6 + avgDurationRatio * 0.4;
+    if (config.vtecIntakeDuration > 250 && rpm > 5000) {
+      const bonus = (config.vtecIntakeDuration - 250) / 200 * ((rpm - 5000) / 3000);
+      multiplier *= (1 + bonus);
+    }
+    return multiplier;
+  }
 }
 
 function getGear(speedMph: number): number {
@@ -552,6 +631,9 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       fanOn = false;
     }
 
+    let scParasiticLoss = 0;
+    let nitrousActiveNow = false;
+
     if (config.turboEnabled) {
       const rpmFactor = clamp((currentRpm - 2000) / 4000, 0, 1);
       const throttleFactor = throttle;
@@ -564,6 +646,16 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
         fuelCutActive = true;
         fuelCutFraction = 1.0;
       }
+    } else if (config.superchargerEnabled) {
+      const eff = config.superchargerEfficiency / 100;
+      let scBoost: number;
+      if (config.superchargerType === 'centrifugal') {
+        scBoost = config.superchargerMaxBoostPsi * Math.pow(currentRpm / redline, 2) * throttle * eff;
+      } else {
+        scBoost = config.superchargerMaxBoostPsi * throttle * (0.7 + 0.3 * currentRpm / redline) * eff;
+      }
+      boostPsi = clamp(scBoost, 0, config.superchargerMaxBoostPsi);
+      scParasiticLoss = boostPsi * 0.5;
     } else {
       boostPsi = 0;
     }
@@ -638,10 +730,25 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
 
       if (shiftTimer <= 0) {
         let torqueFtLb = getB16Torque(currentRpm, throttle);
+        const camMultiplier = getCamTorqueMultiplier(currentRpm, vtecActive, config);
+        torqueFtLb *= camMultiplier;
 
         if (config.turboEnabled && boostPsi > 0) {
           const boostMultiplier = 1 + (boostPsi / 14.7) * 0.9;
           torqueFtLb *= boostMultiplier;
+        } else if (config.superchargerEnabled && boostPsi > 0) {
+          const scMultiplier = 1 + (boostPsi / 14.7) * 0.9;
+          torqueFtLb *= scMultiplier;
+          torqueFtLb -= scParasiticLoss;
+        }
+
+        if (config.nitrousEnabled) {
+          const nosActive = currentRpm >= config.nitrousActivationRpm && (throttle >= 0.95 || !config.nitrousFullThrottleOnly);
+          if (nosActive && currentRpm > 0) {
+            nitrousActiveNow = true;
+            const nitrousAdder = config.nitrousHpAdder * 5252 / currentRpm;
+            torqueFtLb += nitrousAdder;
+          }
         }
 
         const timingFactor = Math.max(0.3, 1 - timingRetardTotal / 60);
@@ -780,21 +887,43 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     oilTemp = lerp(oilTemp, targetOil, dt * 0.03);
 
     const cylinderPressure = getCylinderPressure(crankAngle, throttle, currentRpm, config.compressionRatio);
-    const intakeValveLift = getValveLift(crankAngle, true);
-    const exhaustValveLift = getValveLift(crankAngle, false);
+    const stockIntakeLift = vtecActive ? 10.6 : 7.6;
+    const stockExhaustLift = vtecActive ? 9.4 : 7.0;
+    const configIntakeLift = vtecActive ? config.vtecIntakeLiftMm : config.lowCamIntakeLiftMm;
+    const configExhaustLift = vtecActive ? config.vtecExhaustLiftMm : config.lowCamExhaustLiftMm;
+    const intakeValveLift = getValveLift(crankAngle, true) * (configIntakeLift / stockIntakeLift);
+    const exhaustValveLift = getValveLift(crankAngle, false) * (configExhaustLift / stockExhaustLift);
 
     let torque = getB16Torque(currentRpm, throttle);
+    const displayCamMultiplier = getCamTorqueMultiplier(currentRpm, vtecActive, config);
+    torque *= displayCamMultiplier;
+
     if (config.turboEnabled && boostPsi > 0) {
       const boostMultiplier = 1 + (boostPsi / 14.7) * 0.9;
       torque *= boostMultiplier;
+    } else if (config.superchargerEnabled && boostPsi > 0) {
+      const scMultiplier = 1 + (boostPsi / 14.7) * 0.9;
+      torque *= scMultiplier;
+      torque -= scParasiticLoss;
     }
+
+    if (config.nitrousEnabled) {
+      const nosActive = currentRpm >= config.nitrousActivationRpm && (throttle >= 0.95 || !config.nitrousFullThrottleOnly);
+      if (nosActive && currentRpm > 0) {
+        nitrousActiveNow = true;
+        const nitrousAdder = config.nitrousHpAdder * 5252 / currentRpm;
+        torque += nitrousAdder;
+      }
+    }
+
     const hp = (torque * currentRpm) / 5252;
 
     let baseMAP = 30 + throttle * 71;
-    if (config.turboEnabled && boostPsi > 0) {
+    if ((config.turboEnabled || config.superchargerEnabled) && boostPsi > 0) {
       baseMAP += boostPsi * 6.895;
     }
-    const intakeManifoldPressure = clamp(baseMAP + Math.sin(crankAngle * Math.PI / 180) * 3, 20, config.turboEnabled ? 250 : 102);
+    const hasForcedInduction = config.turboEnabled || config.superchargerEnabled;
+    const intakeManifoldPressure = clamp(baseMAP + Math.sin(crankAngle * Math.PI / 180) * 3, 20, hasForcedInduction ? 250 : 102);
 
     const rpmNorm = currentRpm / redline;
     const baseEGT = 400 + throttle * 900 + rpmNorm * 350;
@@ -956,6 +1085,8 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       fuelCutActive,
       revLimitActive,
       turboEnabled: config.turboEnabled,
+      nitrousActive: nitrousActiveNow,
+      superchargerEnabled: config.superchargerEnabled,
     };
   }
 

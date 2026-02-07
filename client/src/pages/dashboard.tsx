@@ -163,7 +163,7 @@ export default function Dashboard() {
           <Gauge label="1000 ft" value={fmt(state.thousandFootTime)} unit="sec" testId="gauge-1000ft" />
 
           <SectionHeader title="ECU Status" />
-          <Gauge label="Boost" value={state.boostPsi} unit="psi" testId="gauge-boost" highlight={state.turboEnabled} />
+          <Gauge label="Boost" value={state.boostPsi} unit="psi" testId="gauge-boost" highlight={state.turboEnabled || state.superchargerEnabled} />
           <Gauge label="Fan" value={state.fanStatus ? "ON" : "OFF"} unit="status" testId="gauge-fan" />
           <Gauge label="Fuel Map" value={state.closedLoopStatus} unit="loop" testId="gauge-cl-status" />
           <Gauge label="Launch" value={state.launchControlActive ? "ON" : "OFF"} unit="ctrl" testId="gauge-launch-ctrl" />
@@ -171,6 +171,8 @@ export default function Dashboard() {
           <Gauge label="Knock Ret" value={state.knockRetardActive} unit="deg" testId="gauge-knock-ret" />
           <Gauge label="Fuel Cut" value={state.fuelCutActive ? "YES" : "NO"} unit="status" testId="gauge-fuel-cut" />
           <Gauge label="Rev Limit" value={state.revLimitActive ? "YES" : "NO"} unit="status" testId="gauge-rev-limit" />
+          <Gauge label="S/C Active" value={state.superchargerEnabled ? "ON" : "OFF"} unit="status" testId="gauge-sc-active" highlight={state.superchargerEnabled} />
+          <Gauge label="Nitrous" value={state.nitrousActive ? "ON" : "OFF"} unit="status" testId="gauge-nitrous" highlight={state.nitrousActive} />
 
           <SectionHeader title="Peak Performance" />
           <Gauge label="Peak G" value={state.peakAccelG} unit="g" testId="gauge-peak-g" />

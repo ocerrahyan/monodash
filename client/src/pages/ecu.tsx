@@ -195,6 +195,7 @@ function getStringOptions(key: ConfigKey): string[] {
     case "revLimitType": return ["fuel_cut", "ignition_cut", "both"];
     case "tractionControlMode": return ["mild", "moderate", "aggressive"];
     case "o2SensorType": return ["narrowband", "wideband"];
+    case "superchargerType": return ["centrifugal", "roots", "twinscrew"];
     default: return [];
   }
 }
@@ -267,6 +268,16 @@ export default function EcuPage() {
         <ParamRow label="VTEC Disengage RPM" configKey="vtecDisengageRpm" config={config} onChange={handleChange} unit="rpm" step={100} min={2000} max={9000} testId="ecu-vtec-disengage" />
         <ParamRow label="Min Oil Pressure" configKey="vtecOilPressureMin" config={config} onChange={handleChange} unit="psi" step={1} min={10} max={60} testId="ecu-vtec-oil-press" />
 
+        <SectionHeader title="Cam Profile" />
+        <ParamRow label="Low Cam Intake Lift" configKey="lowCamIntakeLiftMm" config={config} onChange={handleChange} unit="mm" step={0.1} min={5} max={15} testId="ecu-cam-profile-low-intake-lift" />
+        <ParamRow label="Low Cam Exhaust Lift" configKey="lowCamExhaustLiftMm" config={config} onChange={handleChange} unit="mm" step={0.1} min={5} max={15} testId="ecu-cam-profile-low-exhaust-lift" />
+        <ParamRow label="Low Cam Intake Duration" configKey="lowCamIntakeDuration" config={config} onChange={handleChange} unit="deg" step={2} min={180} max={320} testId="ecu-cam-profile-low-intake-dur" />
+        <ParamRow label="Low Cam Exhaust Duration" configKey="lowCamExhaustDuration" config={config} onChange={handleChange} unit="deg" step={2} min={180} max={320} testId="ecu-cam-profile-low-exhaust-dur" />
+        <ParamRow label="VTEC Intake Lift" configKey="vtecIntakeLiftMm" config={config} onChange={handleChange} unit="mm" step={0.1} min={5} max={18} testId="ecu-cam-profile-vtec-intake-lift" />
+        <ParamRow label="VTEC Exhaust Lift" configKey="vtecExhaustLiftMm" config={config} onChange={handleChange} unit="mm" step={0.1} min={5} max={18} testId="ecu-cam-profile-vtec-exhaust-lift" />
+        <ParamRow label="VTEC Intake Duration" configKey="vtecIntakeDuration" config={config} onChange={handleChange} unit="deg" step={2} min={200} max={340} testId="ecu-cam-profile-vtec-intake-dur" />
+        <ParamRow label="VTEC Exhaust Duration" configKey="vtecExhaustDuration" config={config} onChange={handleChange} unit="deg" step={2} min={200} max={340} testId="ecu-cam-profile-vtec-exhaust-dur" />
+
         <SectionHeader title="Fuel Tuning" />
         <ParamRow label="Injector Size" configKey="injectorSizeCc" config={config} onChange={handleChange} unit="cc" step={10} min={100} max={2000} testId="ecu-injector-size" />
         <ParamRow label="Fuel Pressure" configKey="fuelPressurePsi" config={config} onChange={handleChange} unit="psi" step={1} min={20} max={80} testId="ecu-fuel-pressure" />
@@ -297,6 +308,18 @@ export default function EcuPage() {
         <ParamRow label="Anti-Lag" configKey="antiLagEnabled" config={config} onChange={handleChange} testId="ecu-anti-lag" />
         <ParamRow label="Anti-Lag Retard" configKey="antiLagRetard" config={config} onChange={handleChange} unit="deg" step={1} min={0} max={40} testId="ecu-anti-lag-retard" />
         <ArrayParamRow label="Boost by Gear" configKey="boostByGear" config={config} onChange={handleChange} unit="psi" step={1} labels={["1st", "2nd", "3rd", "4th", "5th"]} testId="ecu-boost-gear" />
+
+        <SectionHeader title="Supercharger" />
+        <ParamRow label="Supercharger Enabled" configKey="superchargerEnabled" config={config} onChange={handleChange} testId="ecu-supercharger-enabled" />
+        <ParamRow label="Supercharger Type" configKey="superchargerType" config={config} onChange={handleChange} testId="ecu-supercharger-type" />
+        <ParamRow label="Max Boost PSI" configKey="superchargerMaxBoostPsi" config={config} onChange={handleChange} unit="psi" step={0.5} min={1} max={25} testId="ecu-supercharger-max-boost" />
+        <ParamRow label="Efficiency" configKey="superchargerEfficiency" config={config} onChange={handleChange} unit="%" step={1} min={30} max={100} testId="ecu-supercharger-efficiency" />
+
+        <SectionHeader title="Nitrous" />
+        <ParamRow label="Nitrous Enabled" configKey="nitrousEnabled" config={config} onChange={handleChange} testId="ecu-nitrous-enabled" />
+        <ParamRow label="Shot Size" configKey="nitrousHpAdder" config={config} onChange={handleChange} unit="hp" step={5} min={10} max={300} testId="ecu-nitrous-shot-size" />
+        <ParamRow label="Activation RPM" configKey="nitrousActivationRpm" config={config} onChange={handleChange} unit="rpm" step={100} min={1000} max={8000} testId="ecu-nitrous-activation-rpm" />
+        <ParamRow label="Full Throttle Only" configKey="nitrousFullThrottleOnly" config={config} onChange={handleChange} testId="ecu-nitrous-fto" />
 
         <SectionHeader title="Idle Control" />
         <ParamRow label="Target Idle RPM" configKey="targetIdleRpm" config={config} onChange={handleChange} unit="rpm" step={50} min={500} max={1500} testId="ecu-idle-rpm" />

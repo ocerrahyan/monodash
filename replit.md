@@ -28,7 +28,7 @@ A minimalist, text-only dashboard that simulates a 2000 Honda Civic Si (B16A2) e
 - Torque curve modeled via lookup table with interpolation
 - Optional turbo kit with boost control, wastegate, and anti-lag
 
-## ECU Tuning System (~80 parameters)
+## ECU Tuning System (~96 parameters)
 Full programmable ECU accessible from /ecu page. All changes apply in real-time.
 
 ### Rev Limits
@@ -36,6 +36,13 @@ Redline RPM, Fuel Cut RPM, Rev Limit Type (fuel/ignition/both), Soft Cut RPM, So
 
 ### VTEC Control
 Engage RPM, Disengage RPM (hysteresis), Min Oil Pressure
+
+### Cam Profile
+Low Cam: Intake Lift (mm), Exhaust Lift (mm), Intake Duration (deg), Exhaust Duration (deg)
+VTEC Cam: Intake Lift (mm), Exhaust Lift (mm), Intake Duration (deg), Exhaust Duration (deg)
+- Cam lift/duration directly affects torque multiplier via ratio to stock values
+- Bigger cams add top-end power but lose low-end torque
+- Both intake and exhaust values factored into power calculation
 
 ### Fuel Tuning
 Injector Size, Fuel Pressure, AFR Targets (idle/cruise/WOT/VTEC), Cranking Fuel PW, Warmup Enrich, Accel Enrich, Decel Fuel Cut, Closed Loop toggle, CL AFR Target
@@ -45,6 +52,19 @@ Base Timing, Max Advance, Idle Timing, Knock Retard, Knock Sensitivity, Knock Re
 
 ### Boost / Wastegate
 Turbo Enable toggle, Wastegate Duty, Boost Target, Boost Cut, Anti-Lag toggle, Anti-Lag Retard, Boost by Gear (per-gear targets)
+
+### Supercharger
+Supercharger Enable toggle, Type (centrifugal/roots/twinscrew), Max Boost PSI, Efficiency %
+- Centrifugal: boost scales with RPM squared (more top-end)
+- Roots/Twinscrew: boost available from low RPM (more linear)
+- Parasitic power loss modeled (engine-driven)
+- Turbo and supercharger don't stack (turbo takes precedence)
+
+### Nitrous
+Nitrous Enable toggle, Shot Size (HP), Activation RPM, Full Throttle Only toggle
+- Adds direct torque based on configured HP shot size
+- Active during quarter-mile runs
+- Full throttle only option for safety
 
 ### Idle Control
 Target Idle RPM, IACV Position, Idle Ignition Timing
@@ -102,8 +122,8 @@ Speed MPH, Speed KM/H, Distance ft, Distance m, Tire RPM, Elapsed Time, 1/4 ET, 
 ### Split Times (4 gauges)
 60ft Time, 330ft Time, 1/8 Mile Time, 1000ft Time
 
-### ECU Status (8 gauges)
-Boost PSI, Fan Status, Fuel Map (closed/open loop), Launch Control Active, Traction Control Active, Knock Retard Active, Fuel Cut Active, Rev Limit Active
+### ECU Status (10 gauges)
+Boost PSI, Fan Status, Fuel Map (closed/open loop), Launch Control Active, Traction Control Active, Knock Retard Active, Fuel Cut Active, Rev Limit Active, S/C Active, Nitrous Active
 
 ### Peak Performance (2 gauges)
 Peak G, Peak Wheel HP
@@ -133,7 +153,10 @@ Peak G, Peak Wheel HP
 - "DEFAULTS" button on ECU page resets all parameters to stock B16A2 values
 
 ## Recent Changes
-- 2026-02-07: Added fully programmable ECU tuning page (/ecu) with ~80 configurable parameters
+- 2026-02-07: Added cam profile tuning (intake/exhaust lift & duration for both low cam and VTEC cam) affecting torque curve
+- 2026-02-07: Added supercharger simulation (centrifugal/roots/twinscrew) with parasitic drag modeling
+- 2026-02-07: Added nitrous oxide system with configurable shot size and activation RPM
+- 2026-02-07: Added fully programmable ECU tuning page (/ecu) with ~96 configurable parameters
 - 2026-02-07: Added turbo/boost simulation with wastegate, anti-lag, per-gear boost targets
 - 2026-02-07: Added launch control, traction control, and flat foot shift systems
 - 2026-02-07: Added ECU Status section to dashboard (boost, fan, fuel map, launch/TC active, knock retard, fuel/rev cut)
