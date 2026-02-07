@@ -98,8 +98,14 @@ const TIRE_DIAMETER_IN = 23.5;
 const TIRE_CIRCUMFERENCE_FT = (TIRE_DIAMETER_IN * Math.PI) / 12;
 const FINAL_DRIVE_RATIO = 3.73;
 const GEAR_RATIOS = [3.42, 2.14, 1.45, 1.0, 0.78];
+const TIRE_MASS_LB = 16;
+const TIRE_MASS_KG = TIRE_MASS_LB * 0.4536;
+const TIRE_RADIUS_M = TIRE_DIAMETER_IN * 0.0254 / 2;
+const TIRE_INERTIA = TIRE_MASS_KG * TIRE_RADIUS_M * TIRE_RADIUS_M;
+const TOTAL_TIRE_INERTIA = 4 * TIRE_INERTIA;
 const VEHICLE_MASS_LB = 3200;
 const VEHICLE_MASS_KG = VEHICLE_MASS_LB * 0.4536;
+const EFFECTIVE_MASS_KG = VEHICLE_MASS_KG + TOTAL_TIRE_INERTIA / (TIRE_RADIUS_M * TIRE_RADIUS_M);
 const DRAG_COEFF = 0.35;
 const FRONTAL_AREA_M2 = 2.2;
 const AIR_DENSITY = 1.225;
@@ -190,7 +196,7 @@ export function createEngineSimulation() {
       const rollingForceN = ROLLING_RESISTANCE * VEHICLE_MASS_KG * 9.81;
 
       const netForceN = wheelForceN - dragForceN - rollingForceN;
-      const accelMps2 = netForceN / VEHICLE_MASS_KG;
+      const accelMps2 = netForceN / EFFECTIVE_MASS_KG;
 
       prevSpeedMps = speedMps;
       speedMps = Math.max(speedMps + accelMps2 * dt, 0);
