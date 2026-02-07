@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { type EcuConfig, getDefaultEcuConfig } from "@/lib/engineSim";
 import { sharedSim } from "@/lib/sharedSim";
 import { getAllPresets, savePreset, deletePreset, type Preset } from "@/lib/presets";
+import { useAiMode } from "@/lib/aiMode";
 
 type ConfigKey = keyof EcuConfig;
 
@@ -217,6 +218,7 @@ export default function EcuPage() {
   const [showSave, setShowSave] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
+  const [aiMode, toggleAi] = useAiMode();
 
   const refreshPresets = useCallback(() => {
     setPresets(getAllPresets());
@@ -263,10 +265,17 @@ export default function EcuPage() {
 
   return (
     <div className="fixed inset-0 bg-black text-white flex flex-col select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
-      <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-white/20">
+      <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-white/20 gap-2">
         <Link href="/" className="text-[10px] tracking-wider uppercase opacity-70 font-mono" data-testid="link-dashboard">
           GAUGES
         </Link>
+        <button
+          onClick={toggleAi}
+          className={`text-[10px] tracking-wider uppercase font-mono border px-2 py-0.5 ${aiMode ? "border-green-500/60 text-green-400 opacity-100" : "border-white/25 opacity-70"}`}
+          data-testid="button-ai-toggle-ecu"
+        >
+          {aiMode ? "AI ON" : "CODE"}
+        </button>
         <span className="text-[10px] tracking-[0.3em] uppercase opacity-80 font-mono">ECU TUNING</span>
         <button
           onClick={handleReset}

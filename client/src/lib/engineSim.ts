@@ -488,6 +488,7 @@ function computeDerived(config: EcuConfig): DerivedConstants {
 export function createEngineSimulation(ecuConfig?: EcuConfig) {
   let config: EcuConfig = ecuConfig ? { ...ecuConfig } : getDefaultEcuConfig();
   let derived = computeDerived(config);
+  let aiCorrections = { gripMultiplier: 1.0, weightTransferMultiplier: 1.0, slipMultiplier: 1.0, dragMultiplier: 1.0, tractionMultiplier: 1.0 };
 
   let crankAngle = 0;
   let currentRpm = config.targetIdleRpm;
@@ -781,10 +782,11 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
 
       const prevAccelMps2 = dt > 0 && speedMps > 0.05 ? (speedMps - prevSpeedMps) / dt : 0;
       weightTransferN = (derived.vehicleMassKg * Math.max(prevAccelMps2, 0) * config.cgHeightM) / config.wheelbaseM;
+      weightTransferN *= aiCorrections.weightTransferMultiplier;
       const staticFrontLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
       frontAxleLoadN = Math.max(staticFrontLoadN - weightTransferN * 0.7, derived.vehicleMassKg * GRAVITY * 0.45);
 
-      maxTractionForceN = frontAxleLoadN * config.tireGripCoeff;
+      maxTractionForceN = frontAxleLoadN * config.tireGripCoeff * aiCorrections.gripMultiplier;
 
       if (wheelForceN > maxTractionForceN) {
         const excessForceRatio = (wheelForceN - maxTractionForceN) / maxTractionForceN;
@@ -805,12 +807,12 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
           slipRatio = reducedExcess > 0 ? clamp(reducedExcess * 0.5, 0, 2.0) : 0;
         }
 
-        const degradedGrip = tireGripFromSlip(slipRatio, config.tireGripCoeff, config.optimalSlipRatio);
+        const degradedGrip = tireGripFromSlip(slipRatio * aiCorrections.slipMultiplier, config.tireGripCoeff * aiCorrections.gripMultiplier, config.optimalSlipRatio);
         wheelForceN = Math.min(wheelForceN, frontAxleLoadN * degradedGrip);
         wheelSpeedMps = speedMps * (1 + slipRatio);
       }
 
-      dragForceN = 0.5 * AIR_DENSITY * config.dragCoefficient * config.frontalAreaM2 * speedMps * speedMps;
+      dragForceN = 0.5 * AIR_DENSITY * config.dragCoefficient * config.frontalAreaM2 * speedMps * speedMps * aiCorrections.dragMultiplier;
       rollingForceN = config.rollingResistanceCoeff * derived.vehicleMassKg * GRAVITY;
 
       netForceN = wheelForceN - dragForceN - rollingForceN;
@@ -896,7 +898,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       const wheelRadius = derived.tireRadiusM;
 
       frontAxleLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
-      maxTractionForceN = frontAxleLoadN * config.tireGripCoeff;
+      maxTractionForceN = frontAxleLoadN * config.tireGripCoeff * aiCorrections.gripMultiplier;
 
       let freeRevTorque = getB16Torque(currentRpm, throttle);
       const freeRevCamMult = getCamTorqueMultiplier(currentRpm, vtecActive, config);
@@ -1175,5 +1177,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     };
   }
 
-  return { update, setThrottle, startQuarterMile, resetQuarterMile, isRunning: () => running, setEcuConfig, getEcuConfig };
+  function setAiCorrections(c: { gripMultiplier: number; weightTransferMultiplier: number; slipMultiplier: number; dragMultiplier: number; tractionMultiplier: number }) { aiCorrections = c; }
+  function getAiCorrections() { return aiCorrections; }
+  return { update, setThrottle, startQuarterMile, resetQuarterMile, isRunning: () => running, setEcuConfig, getEcuConfig, setAiCorrections, getAiCorrections };
 }

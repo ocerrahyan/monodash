@@ -4,6 +4,8 @@ import { type EngineState } from "@/lib/engineSim";
 import { sharedSim } from "@/lib/sharedSim";
 import { EngineSound } from "@/lib/engineSound";
 import { Button } from "@/components/ui/button";
+import { useAiMode } from "@/lib/aiMode";
+import { fetchAiCorrections, defaultCorrections, type AiCorrectionFactors } from "@/lib/aiPhysicsClient";
 
 function useActiveCount() {
   const [count, setCount] = useState<number>(0);
@@ -114,6 +116,47 @@ export default function Dashboard() {
   const finishStateRef = useRef<EngineState | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeCount = useActiveCount();
+  const [aiMode, toggleAi] = useAiMode();
+  const [aiNotes, setAiNotes] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const aiPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!aiMode) {
+      simRef.current.setAiCorrections({ gripMultiplier: 1, weightTransferMultiplier: 1, slipMultiplier: 1, dragMultiplier: 1, tractionMultiplier: 1 });
+      setAiNotes("");
+      if (aiPollRef.current) { clearInterval(aiPollRef.current); aiPollRef.current = null; }
+      return;
+    }
+
+    const pollAi = async () => {
+      const s = simRef.current.update(0);
+      const cfg = simRef.current.getEcuConfig();
+      setAiLoading(true);
+      const corrections = await fetchAiCorrections({
+        rpm: s.rpm, throttle: s.throttlePosition / 100, speedMph: s.speedMph,
+        currentGear: typeof s.currentGearDisplay === 'number' ? s.currentGearDisplay : 0,
+        torque: s.torque, horsepower: s.horsepower, boostPsi: s.boostPsi,
+        tireSlipPercent: s.tireSlipPercent, accelerationG: s.accelerationG,
+        weightTransfer: s.weightTransfer, frontAxleLoad: s.frontAxleLoad,
+        wheelForce: s.wheelForce, tractionLimit: s.tractionLimit,
+        ecuConfig: {
+          vehicleMassLbs: cfg.vehicleMassLb, tireGripCoeff: cfg.tireGripCoeff,
+          turboEnabled: cfg.turboEnabled, superchargerEnabled: cfg.superchargerEnabled,
+          nitrousEnabled: cfg.nitrousEnabled, nitrousHpAdder: cfg.nitrousHpAdder,
+          dragCoefficient: cfg.dragCoefficient, frontalAreaM2: cfg.frontalAreaM2,
+          tireDiameterInches: cfg.tireDiameterIn,
+        },
+      });
+      simRef.current.setAiCorrections(corrections);
+      setAiNotes(corrections.aiNotes || "");
+      setAiLoading(false);
+    };
+
+    pollAi();
+    aiPollRef.current = setInterval(pollAi, 4000);
+    return () => { if (aiPollRef.current) clearInterval(aiPollRef.current); };
+  }, [aiMode]);
 
   useEffect(() => {
     soundRef.current = new EngineSound();
@@ -213,14 +256,21 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={toggleAi}
+              className={`text-[10px] tracking-wider uppercase font-mono border px-2 py-0.5 ${aiMode ? "border-green-500/60 text-green-400 opacity-100" : "border-white/25 opacity-70"}`}
+              data-testid="button-ai-toggle"
+            >
+              {aiMode ? (aiLoading ? "AI..." : "AI ON") : "CODE"}
+            </button>
+            <button
               onClick={handleSoundToggle}
               className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5"
               data-testid="button-sound-toggle"
             >
-              {soundOn ? "SOUND ON" : "SOUND OFF"}
+              {soundOn ? "SND" : "SND"}
             </button>
             <Link href="/ecu" className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5" data-testid="link-ecu">
-              ECU TUNE
+              ECU
             </Link>
           </div>
         </div>
@@ -345,6 +395,15 @@ export default function Dashboard() {
           <Gauge label="Rev Limit" value={state.revLimitActive ? "YES" : "NO"} unit="status" testId="gauge-rev-limit" />
           <Gauge label="S/C Active" value={state.superchargerEnabled ? "ON" : "OFF"} unit="status" testId="gauge-sc-active" highlight={state.superchargerEnabled} />
           <Gauge label="Nitrous" value={state.nitrousActive ? "ON" : "OFF"} unit="status" testId="gauge-nitrous" highlight={state.nitrousActive} />
+
+          {aiMode && aiNotes && (
+            <div className="col-span-4 px-3 py-2" data-testid="ai-notes-section">
+              <div className="border border-green-500/30 px-2 py-1.5">
+                <span className="text-[8px] tracking-[0.2em] uppercase text-green-400/80 font-mono block mb-1">AI PHYSICS NOTES</span>
+                <span className="text-[9px] font-mono text-green-300/70 leading-tight block" data-testid="text-ai-notes">{aiNotes}</span>
+              </div>
+            </div>
+          )}
 
           <SectionHeader title="Peak Performance" />
           <Gauge label="Peak G" value={state.peakAccelG} unit="g" testId="gauge-peak-g" />

@@ -12,6 +12,10 @@ A minimalist, text-only dashboard that simulates a 2000 Honda Civic Si (B16A2) e
 - ECU config changes apply in real-time to the simulation
 - ECU presets stored in localStorage (per-device)
 - Live player count tracked via session heartbeats in PostgreSQL
+- AI-enhanced physics mode: OpenAI gpt-5-mini validates physics in real-time via /api/ai-physics
+- AI mode toggle shared across pages via singleton state (client/src/lib/aiMode.ts)
+- AI corrections applied to grip, weight transfer, slip, drag, traction (multipliers 0.5-1.5)
+- Dashboard polls AI every 4 seconds when enabled, with correction display
 
 ## Key Files
 - `client/src/pages/dashboard.tsx` - Scrollable dashboard UI with sectioned gauge grid, sound toggle, live player count, and fixed bottom controls
@@ -21,8 +25,11 @@ A minimalist, text-only dashboard that simulates a 2000 Honda Civic Si (B16A2) e
 - `client/src/lib/sharedSim.ts` - Shared singleton simulation instance for cross-page state
 - `client/src/lib/presets.ts` - ECU preset system (built-in + custom presets via localStorage)
 - `client/src/App.tsx` - App entry point, routes to dashboard (/) and ECU (/ecu)
-- `server/routes.ts` - API routes for heartbeat and active player count
+- `server/routes.ts` - API routes for heartbeat, active player count, and AI physics validation
+- `server/aiPhysics.ts` - OpenAI gpt-5-mini physics validation (correction multipliers)
 - `server/storage.ts` - Database storage for active sessions
+- `client/src/lib/aiMode.ts` - Shared AI mode state singleton with React hook
+- `client/src/lib/aiPhysicsClient.ts` - Client-side AI physics API caller with fallback
 - `server/db.ts` - PostgreSQL connection via drizzle-orm
 - `shared/schema.ts` - Database schema (active_sessions table)
 
