@@ -159,6 +159,7 @@ export function createEngineSimulation() {
   let qmET: number | null = null;
   let qmActive = false;
   let prevSpeedMps = 0;
+  let currentGear = 0;
 
   function setThrottle(value: number) {
     throttle = clamp(value, 0, 1);
@@ -172,6 +173,7 @@ export function createEngineSimulation() {
     qmET = null;
     qmActive = true;
     prevSpeedMps = 0;
+    currentGear = 0;
   }
 
   function resetQuarterMile() {
@@ -183,15 +185,14 @@ export function createEngineSimulation() {
     prevSpeedMps = 0;
     throttle = 0;
     targetRpm = IDLE_RPM;
+    currentGear = 0;
   }
 
   function update(deltaMs: number): EngineState {
     const dt = deltaMs / 1000;
 
     if (qmActive && qmET === null) {
-      const speedMph = speedMps * 2.237;
-      const gear = getGear(speedMph);
-      const gearRatio = GEAR_RATIOS[gear];
+      const gearRatio = GEAR_RATIOS[currentGear];
       const totalRatio = gearRatio * FINAL_DRIVE_RATIO;
 
       const wheelRps = speedMps / (TIRE_CIRCUMFERENCE_FT * 0.3048);
@@ -207,6 +208,10 @@ export function createEngineSimulation() {
         effectiveRpm = drivenRpm;
       }
       currentRpm = clamp(Math.max(effectiveRpm, IDLE_RPM), IDLE_RPM, REDLINE);
+
+      if (currentRpm >= REDLINE && currentGear < GEAR_RATIOS.length - 1) {
+        currentGear++;
+      }
 
       const torqueFtLb = getB16Torque(currentRpm, throttle);
       const engineTorqueNm = torqueFtLb * 1.3558;
