@@ -62,7 +62,10 @@ export default function Dashboard() {
       soundRef.current.update(
         newState.rpm, newState.throttlePosition / 100, newState.vtecActive,
         newState.fuelCutActive, newState.revLimitActive,
-        config.antiLagEnabled, newState.launchControlActive
+        config.antiLagEnabled, newState.launchControlActive,
+        newState.boostPsi, newState.turboEnabled,
+        newState.tireSlipPercent, newState.currentGearDisplay,
+        newState.quarterMileActive
       );
     }
     rafRef.current = requestAnimationFrame(tick);

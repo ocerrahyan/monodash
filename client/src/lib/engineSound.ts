@@ -3,6 +3,8 @@ export class EngineSound {
   private enabled = false;
   private prevThrottle = 0;
   private prevVtec = false;
+  private prevGear = 0;
+  private prevBoostPsi = 0;
   private lastPopTime = 0;
   private lastBangTime = 0;
   private popCount = 0;
@@ -27,9 +29,22 @@ export class EngineSound {
   private popGain: GainNode | null = null;
   private popFilter: BiquadFilterNode | null = null;
 
+  private turboSpoolSource: AudioBufferSourceNode | null = null;
+  private turboSpoolGain: GainNode | null = null;
+  private turboSpoolFilter: BiquadFilterNode | null = null;
+
+  private turboWhistleOsc: OscillatorNode | null = null;
+  private turboWhistleGain: GainNode | null = null;
+  private turboWhistleFilter: BiquadFilterNode | null = null;
+
+  private tireSource: AudioBufferSourceNode | null = null;
+  private tireGain: GainNode | null = null;
+  private tireFilter: BiquadFilterNode | null = null;
+
   private vtecTransitionTime = 0;
   private revLimiterPhase = 0;
   private lastUpdateTime = 0;
+  private lastBovTime = 0;
 
   constructor() {}
 
@@ -110,10 +125,70 @@ export class EngineSound {
       this.popFilter.connect(this.popGain);
       this.popGain.connect(this.masterGain);
 
+      this.initTurboSound();
+      this.initTireSound();
+
       return true;
     } catch {
       return false;
     }
+  }
+
+  private initTurboSound(): void {
+    if (!this.ctx || !this.noiseBuffer || !this.masterGain) return;
+
+    this.turboSpoolFilter = this.ctx.createBiquadFilter();
+    this.turboSpoolFilter.type = 'bandpass';
+    this.turboSpoolFilter.frequency.value = 800;
+    this.turboSpoolFilter.Q.value = 3;
+
+    this.turboSpoolGain = this.ctx.createGain();
+    this.turboSpoolGain.gain.value = 0;
+
+    this.turboSpoolSource = this.ctx.createBufferSource();
+    this.turboSpoolSource.buffer = this.noiseBuffer;
+    this.turboSpoolSource.loop = true;
+    this.turboSpoolSource.connect(this.turboSpoolFilter);
+    this.turboSpoolFilter.connect(this.turboSpoolGain);
+    this.turboSpoolGain.connect(this.masterGain);
+    this.turboSpoolSource.start();
+
+    this.turboWhistleOsc = this.ctx.createOscillator();
+    this.turboWhistleOsc.type = 'sine';
+    this.turboWhistleOsc.frequency.value = 4000;
+
+    this.turboWhistleFilter = this.ctx.createBiquadFilter();
+    this.turboWhistleFilter.type = 'bandpass';
+    this.turboWhistleFilter.frequency.value = 5000;
+    this.turboWhistleFilter.Q.value = 8;
+
+    this.turboWhistleGain = this.ctx.createGain();
+    this.turboWhistleGain.gain.value = 0;
+
+    this.turboWhistleOsc.connect(this.turboWhistleFilter);
+    this.turboWhistleFilter.connect(this.turboWhistleGain);
+    this.turboWhistleGain.connect(this.masterGain);
+    this.turboWhistleOsc.start();
+  }
+
+  private initTireSound(): void {
+    if (!this.ctx || !this.noiseBuffer || !this.masterGain) return;
+
+    this.tireFilter = this.ctx.createBiquadFilter();
+    this.tireFilter.type = 'bandpass';
+    this.tireFilter.frequency.value = 1200;
+    this.tireFilter.Q.value = 1.5;
+
+    this.tireGain = this.ctx.createGain();
+    this.tireGain.gain.value = 0;
+
+    this.tireSource = this.ctx.createBufferSource();
+    this.tireSource.buffer = this.noiseBuffer;
+    this.tireSource.loop = true;
+    this.tireSource.connect(this.tireFilter);
+    this.tireFilter.connect(this.tireGain);
+    this.tireGain.connect(this.masterGain);
+    this.tireSource.start();
   }
 
   private createNoiseBuffer(): AudioBuffer {
@@ -144,7 +219,12 @@ export class EngineSound {
     fuelCutActive: boolean,
     revLimitActive: boolean,
     antiLagEnabled: boolean,
-    launchControlActive: boolean
+    launchControlActive: boolean,
+    boostPsi: number,
+    turboEnabled: boolean,
+    tireSlipPercent: number,
+    currentGear: number,
+    quarterMileActive: boolean
   ): void {
     if (!this.ctx || !this.enabled) return;
 
@@ -228,7 +308,131 @@ export class EngineSound {
       }
     }
 
+    this.updateTurboSound(rpm, throttle, boostPsi, turboEnabled, currentGear, now);
+    this.updateTireSound(tireSlipPercent, quarterMileActive, rpm);
+
     this.prevThrottle = throttle;
+    this.prevGear = currentGear;
+    this.prevBoostPsi = boostPsi;
+  }
+
+  private updateTurboSound(
+    rpm: number,
+    throttle: number,
+    boostPsi: number,
+    turboEnabled: boolean,
+    currentGear: number,
+    now: number
+  ): void {
+    if (!turboEnabled) {
+      if (this.turboSpoolGain) this.turboSpoolGain.gain.value = 0;
+      if (this.turboWhistleGain) this.turboWhistleGain.gain.value = 0;
+      return;
+    }
+
+    const boostNorm = Math.min(Math.max(boostPsi, 0) / 20, 1);
+    const rpmNorm = Math.min(rpm / 8500, 1);
+
+    if (this.turboSpoolFilter) {
+      const spoolFreq = 600 + boostNorm * 2400 + rpmNorm * 800;
+      this.turboSpoolFilter.frequency.value = spoolFreq;
+      this.turboSpoolFilter.Q.value = 2 + boostNorm * 4;
+    }
+
+    if (this.turboSpoolGain) {
+      const spoolVol = boostNorm * 0.12 + rpmNorm * 0.03 + throttle * 0.02;
+      this.turboSpoolGain.gain.value = Math.min(spoolVol, 0.18);
+    }
+
+    if (this.turboWhistleOsc && this.turboWhistleGain && this.turboWhistleFilter) {
+      const whistleBaseFreq = 3000 + boostNorm * 5000 + rpmNorm * 2000;
+      this.turboWhistleOsc.frequency.value = whistleBaseFreq;
+      this.turboWhistleFilter.frequency.value = whistleBaseFreq;
+      const whistleVol = boostNorm > 0.3 ? (boostNorm - 0.3) * 0.15 : 0;
+      this.turboWhistleGain.gain.value = Math.min(whistleVol, 0.12);
+    }
+
+    const throttleDrop = this.prevThrottle - throttle;
+    const gearChanged = currentGear !== this.prevGear && this.prevGear > 0;
+    const boostDrop = this.prevBoostPsi - boostPsi;
+
+    if ((throttleDrop > 0.2 || gearChanged) && this.prevBoostPsi > 3 && now - this.lastBovTime > 0.4) {
+      this.scheduleBov(now, this.prevBoostPsi);
+      this.lastBovTime = now;
+    } else if (boostDrop > 2 && this.prevBoostPsi > 5 && now - this.lastBovTime > 0.5) {
+      this.scheduleBov(now, this.prevBoostPsi);
+      this.lastBovTime = now;
+    }
+  }
+
+  private scheduleBov(time: number, boostAtRelease: number): void {
+    if (!this.ctx || !this.noiseBuffer || !this.masterGain) return;
+
+    const intensity = Math.min(boostAtRelease / 15, 1);
+    const duration = 0.15 + intensity * 0.25;
+    const volume = 0.1 + intensity * 0.2;
+
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+
+    const hiPass = this.ctx.createBiquadFilter();
+    hiPass.type = 'highpass';
+    hiPass.frequency.value = 1500 + intensity * 1000;
+    hiPass.Q.value = 1;
+
+    const bandPass = this.ctx.createBiquadFilter();
+    bandPass.type = 'bandpass';
+    bandPass.frequency.value = 2500 + intensity * 2000;
+    bandPass.Q.value = 3 + intensity * 3;
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(volume, time + 0.01);
+    gain.gain.setValueAtTime(volume * 0.9, time + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+    const freqSweep = this.ctx.createBiquadFilter();
+    freqSweep.type = 'bandpass';
+    freqSweep.Q.value = 2;
+    freqSweep.frequency.setValueAtTime(4000 + intensity * 3000, time);
+    freqSweep.frequency.exponentialRampToValueAtTime(800, time + duration);
+
+    src.connect(hiPass);
+    hiPass.connect(bandPass);
+    bandPass.connect(freqSweep);
+    freqSweep.connect(gain);
+    gain.connect(this.masterGain);
+
+    src.start(time);
+    src.stop(time + duration + 0.01);
+
+    src.onended = () => {
+      src.disconnect();
+      hiPass.disconnect();
+      bandPass.disconnect();
+      freqSweep.disconnect();
+      gain.disconnect();
+    };
+  }
+
+  private updateTireSound(tireSlipPercent: number, quarterMileActive: boolean, rpm: number): void {
+    if (tireSlipPercent < 3) {
+      if (this.tireGain) this.tireGain.gain.value = 0;
+      return;
+    }
+
+    const slipNorm = Math.min((tireSlipPercent - 3) / 30, 1);
+
+    if (this.tireFilter) {
+      const tireFreq = 800 + slipNorm * 2000 + (rpm / 8500) * 500;
+      this.tireFilter.frequency.value = tireFreq;
+      this.tireFilter.Q.value = 1 + slipNorm * 2;
+    }
+
+    if (this.tireGain) {
+      const chirpVol = slipNorm * 0.2;
+      this.tireGain.gain.value = Math.min(chirpVol, 0.2);
+    }
   }
 
   private schedulePop(time: number, duration: number, isLoud: boolean): void {
@@ -281,6 +485,9 @@ export class EngineSound {
     if (this.osc3) { try { this.osc3.stop(); } catch {} this.osc3.disconnect(); this.osc3 = null; }
     if (this.osc4) { try { this.osc4.stop(); } catch {} this.osc4.disconnect(); this.osc4 = null; }
     if (this.noiseSource) { try { this.noiseSource.stop(); } catch {} this.noiseSource.disconnect(); this.noiseSource = null; }
+    if (this.turboSpoolSource) { try { this.turboSpoolSource.stop(); } catch {} this.turboSpoolSource.disconnect(); this.turboSpoolSource = null; }
+    if (this.turboWhistleOsc) { try { this.turboWhistleOsc.stop(); } catch {} this.turboWhistleOsc.disconnect(); this.turboWhistleOsc = null; }
+    if (this.tireSource) { try { this.tireSource.stop(); } catch {} this.tireSource.disconnect(); this.tireSource = null; }
 
     if (this.gain1) { this.gain1.disconnect(); this.gain1 = null; }
     if (this.gain2) { this.gain2.disconnect(); this.gain2 = null; }
@@ -290,6 +497,12 @@ export class EngineSound {
     if (this.noiseFilter) { this.noiseFilter.disconnect(); this.noiseFilter = null; }
     if (this.popFilter) { this.popFilter.disconnect(); this.popFilter = null; }
     if (this.popGain) { this.popGain.disconnect(); this.popGain = null; }
+    if (this.turboSpoolGain) { this.turboSpoolGain.disconnect(); this.turboSpoolGain = null; }
+    if (this.turboSpoolFilter) { this.turboSpoolFilter.disconnect(); this.turboSpoolFilter = null; }
+    if (this.turboWhistleGain) { this.turboWhistleGain.disconnect(); this.turboWhistleGain = null; }
+    if (this.turboWhistleFilter) { this.turboWhistleFilter.disconnect(); this.turboWhistleFilter = null; }
+    if (this.tireGain) { this.tireGain.disconnect(); this.tireGain = null; }
+    if (this.tireFilter) { this.tireFilter.disconnect(); this.tireFilter = null; }
     if (this.revLimiterGain) { this.revLimiterGain.disconnect(); this.revLimiterGain = null; }
     if (this.masterGain) { this.masterGain.disconnect(); this.masterGain = null; }
 
