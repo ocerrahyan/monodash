@@ -26,6 +26,44 @@ export interface EngineState {
   accelerationG: number;
   quarterMileET: number | null;
   quarterMileActive: boolean;
+
+  currentGearDisplay: number;
+  currentGearRatio: number;
+  driveshaftRpm: number;
+  clutchStatus: string;
+  wheelTorque: number;
+  wheelForce: number;
+
+  frontAxleLoad: number;
+  rearAxleLoad: number;
+  weightTransfer: number;
+  tireSlipPercent: number;
+  tractionLimit: number;
+  tireTemp: number;
+
+  sixtyFootTime: number | null;
+  threeThirtyTime: number | null;
+  eighthMileTime: number | null;
+  thousandFootTime: number | null;
+  trapSpeed: number | null;
+  peakAccelG: number;
+  peakWheelHp: number;
+
+  dragForce: number;
+  rollingResistance: number;
+  netForce: number;
+
+  vtecActive: boolean;
+  engineLoad: number;
+  intakeAirTemp: number;
+  intakeVacuum: number;
+  fuelPressure: number;
+  batteryVoltage: number;
+  o2SensorVoltage: number;
+  knockCount: number;
+  catalystTemp: number;
+  speedKmh: number;
+  distanceMeters: number;
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -125,6 +163,8 @@ const OPTIMAL_SLIP_RATIO = 0.10;
 const SHIFT_TIME_S = 0.25;
 const GRAVITY = 9.81;
 
+const N_TO_LBS = 0.2248;
+
 function tireGripFromSlip(slipRatio: number): number {
   const absSlip = Math.abs(slipRatio);
   if (absSlip <= OPTIMAL_SLIP_RATIO) {
@@ -180,6 +220,17 @@ export function createEngineSimulation() {
   let shiftTimer = 0;
   let wheelSpeedMps = 0;
 
+  let tireTemp = 80;
+  let sixtyFootTime: number | null = null;
+  let threeThirtyTime: number | null = null;
+  let eighthMileTime: number | null = null;
+  let thousandFootTime: number | null = null;
+  let trapSpeed: number | null = null;
+  let peakAccelG = 0;
+  let peakWheelHp = 0;
+  let knockCount = 0;
+  let catalystTemp = 400;
+
   function setThrottle(value: number) {
     throttle = clamp(value, 0, 1);
     targetRpm = IDLE_RPM + throttle * (REDLINE - IDLE_RPM);
@@ -195,6 +246,16 @@ export function createEngineSimulation() {
     currentGear = 0;
     shiftTimer = 0;
     wheelSpeedMps = 0;
+
+    tireTemp = 80;
+    sixtyFootTime = null;
+    threeThirtyTime = null;
+    eighthMileTime = null;
+    thousandFootTime = null;
+    trapSpeed = null;
+    peakAccelG = 0;
+    peakWheelHp = 0;
+    knockCount = 0;
   }
 
   function resetQuarterMile() {
@@ -209,10 +270,34 @@ export function createEngineSimulation() {
     currentGear = 0;
     shiftTimer = 0;
     wheelSpeedMps = 0;
+
+    tireTemp = 80;
+    sixtyFootTime = null;
+    threeThirtyTime = null;
+    eighthMileTime = null;
+    thousandFootTime = null;
+    trapSpeed = null;
+    peakAccelG = 0;
+    peakWheelHp = 0;
+    knockCount = 0;
   }
 
   function update(deltaMs: number): EngineState {
     const dt = deltaMs / 1000;
+
+    let wheelForceN = 0;
+    let dragForceN = 0;
+    let rollingForceN = 0;
+    let netForceN = 0;
+    let weightTransferN = 0;
+    let frontAxleLoadN = VEHICLE_MASS_KG * GRAVITY * FRONT_WEIGHT_BIAS;
+    let maxTractionForceN = frontAxleLoadN * TIRE_GRIP_COEFF;
+    let slipRatio = 0;
+    let clutchStatus = "ENGAGED";
+    let wheelTorqueFtLb = 0;
+    let gearRatio = GEAR_RATIOS[0];
+    let totalRatio = gearRatio * FINAL_DRIVE_RATIO;
+    let drivenRpm = 0;
 
     if (qmActive && qmET === null) {
       if (shiftTimer > 0) {
@@ -220,11 +305,11 @@ export function createEngineSimulation() {
         if (shiftTimer < 0) shiftTimer = 0;
       }
 
-      const gearRatio = GEAR_RATIOS[currentGear];
-      const totalRatio = gearRatio * FINAL_DRIVE_RATIO;
+      gearRatio = GEAR_RATIOS[currentGear];
+      totalRatio = gearRatio * FINAL_DRIVE_RATIO;
       const wheelRadius = TIRE_RADIUS_M;
 
-      const drivenRpm = (speedMps / wheelRadius) * (60 / (2 * Math.PI)) * totalRatio;
+      drivenRpm = (speedMps / wheelRadius) * (60 / (2 * Math.PI)) * totalRatio;
 
       const launchRpm = 1500 + throttle * 4500;
       const clutchSlipThreshold = 3000;
@@ -237,38 +322,46 @@ export function createEngineSimulation() {
       }
       currentRpm = clamp(Math.max(effectiveRpm, IDLE_RPM), IDLE_RPM, REDLINE);
 
+      if (shiftTimer > 0) {
+        clutchStatus = "OPEN";
+      } else if (drivenRpm < 3000) {
+        clutchStatus = "SLIPPING";
+      } else {
+        clutchStatus = "ENGAGED";
+      }
+
       if (currentRpm >= REDLINE && currentGear < GEAR_RATIOS.length - 1) {
         currentGear++;
         shiftTimer = SHIFT_TIME_S;
       }
 
-      let wheelForceN = 0;
       if (shiftTimer <= 0) {
         const torqueFtLb = getB16Torque(currentRpm, throttle);
         const engineTorqueNm = torqueFtLb * 1.3558;
         wheelForceN = (engineTorqueNm * totalRatio * (1 - DRIVETRAIN_LOSS)) / wheelRadius;
+        wheelTorqueFtLb = torqueFtLb * totalRatio * (1 - DRIVETRAIN_LOSS);
       }
 
       const prevAccelMps2 = dt > 0 && speedMps > 0.05 ? (speedMps - prevSpeedMps) / dt : 0;
-      const weightTransferN = (VEHICLE_MASS_KG * Math.max(prevAccelMps2, 0) * CG_HEIGHT_M) / WHEELBASE_M;
+      weightTransferN = (VEHICLE_MASS_KG * Math.max(prevAccelMps2, 0) * CG_HEIGHT_M) / WHEELBASE_M;
       const staticFrontLoadN = VEHICLE_MASS_KG * GRAVITY * FRONT_WEIGHT_BIAS;
-      const frontAxleLoadN = Math.max(staticFrontLoadN - weightTransferN, VEHICLE_MASS_KG * GRAVITY * 0.35);
+      frontAxleLoadN = Math.max(staticFrontLoadN - weightTransferN, VEHICLE_MASS_KG * GRAVITY * 0.35);
 
-      const maxTractionForceN = frontAxleLoadN * TIRE_GRIP_COEFF;
+      maxTractionForceN = frontAxleLoadN * TIRE_GRIP_COEFF;
 
       if (wheelForceN > maxTractionForceN) {
         wheelSpeedMps = currentRpm * 2 * Math.PI * wheelRadius / (totalRatio * 60);
-        const slipRatio = speedMps > 0.5
+        slipRatio = speedMps > 0.5
           ? (wheelSpeedMps - speedMps) / speedMps
           : 0.20;
         const degradedGrip = tireGripFromSlip(slipRatio);
         wheelForceN = frontAxleLoadN * degradedGrip;
       }
 
-      const dragForceN = 0.5 * AIR_DENSITY * DRAG_COEFF * FRONTAL_AREA_M2 * speedMps * speedMps;
-      const rollingForceN = ROLLING_RESISTANCE * VEHICLE_MASS_KG * GRAVITY;
+      dragForceN = 0.5 * AIR_DENSITY * DRAG_COEFF * FRONTAL_AREA_M2 * speedMps * speedMps;
+      rollingForceN = ROLLING_RESISTANCE * VEHICLE_MASS_KG * GRAVITY;
 
-      const netForceN = wheelForceN - dragForceN - rollingForceN;
+      netForceN = wheelForceN - dragForceN - rollingForceN;
       const accelMps2 = netForceN / EFFECTIVE_MASS_KG;
 
       prevSpeedMps = speedMps;
@@ -277,16 +370,61 @@ export function createEngineSimulation() {
       distanceFt += avgSpeedMps * dt * 3.28084;
       qmElapsedTime += dt;
 
+      const currentSpeedMph = speedMps * 2.237;
+
+      if (distanceFt >= 60 && sixtyFootTime === null) {
+        const overshootFt = distanceFt - 60;
+        const overshootTime = avgSpeedMps > 0 ? (overshootFt * 0.3048) / avgSpeedMps : 0;
+        sixtyFootTime = qmElapsedTime - overshootTime;
+      }
+      if (distanceFt >= 330 && threeThirtyTime === null) {
+        const overshootFt = distanceFt - 330;
+        const overshootTime = avgSpeedMps > 0 ? (overshootFt * 0.3048) / avgSpeedMps : 0;
+        threeThirtyTime = qmElapsedTime - overshootTime;
+      }
+      if (distanceFt >= 660 && eighthMileTime === null) {
+        const overshootFt = distanceFt - 660;
+        const overshootTime = avgSpeedMps > 0 ? (overshootFt * 0.3048) / avgSpeedMps : 0;
+        eighthMileTime = qmElapsedTime - overshootTime;
+      }
+      if (distanceFt >= 1000 && thousandFootTime === null) {
+        const overshootFt = distanceFt - 1000;
+        const overshootTime = avgSpeedMps > 0 ? (overshootFt * 0.3048) / avgSpeedMps : 0;
+        thousandFootTime = qmElapsedTime - overshootTime;
+      }
+
+      const currentAccelG = dt > 0 ? (speedMps - prevSpeedMps) / (dt * 9.81) : 0;
+      if (currentAccelG > peakAccelG) peakAccelG = currentAccelG;
+
+      const currentWheelHp = (wheelForceN * speedMps) / 745.7;
+      if (currentWheelHp > peakWheelHp) peakWheelHp = currentWheelHp;
+
+      const slipHeat = Math.abs(slipRatio) * dt * 200;
+      const forceHeat = (wheelForceN * N_TO_LBS / 5000) * dt * 5;
+      tireTemp += slipHeat + forceHeat;
+      tireTemp = lerp(tireTemp, 80, dt * 0.01);
+      tireTemp = clamp(tireTemp, 80, 300);
+
       if (distanceFt >= QUARTER_MILE_FT) {
         const overshootFt = distanceFt - QUARTER_MILE_FT;
         const overshootTime = avgSpeedMps > 0 ? (overshootFt * 0.3048) / avgSpeedMps : 0;
         qmET = qmElapsedTime - overshootTime;
+        trapSpeed = currentSpeedMph;
         distanceFt = QUARTER_MILE_FT;
       }
     } else if (!qmActive) {
       const rpmAccelRate = throttle > (currentRpm - IDLE_RPM) / (REDLINE - IDLE_RPM) ? 4000 : 5000;
       currentRpm = lerp(currentRpm, targetRpm, clamp(dt * rpmAccelRate / 5000, 0, 0.15));
       currentRpm = clamp(currentRpm, IDLE_RPM - 50, REDLINE);
+
+      tireTemp = lerp(tireTemp, 80, dt * 0.01);
+      tireTemp = clamp(tireTemp, 80, 300);
+
+      clutchStatus = "ENGAGED";
+      gearRatio = GEAR_RATIOS[0];
+      totalRatio = gearRatio * FINAL_DRIVE_RATIO;
+      frontAxleLoadN = VEHICLE_MASS_KG * GRAVITY * FRONT_WEIGHT_BIAS;
+      maxTractionForceN = frontAxleLoadN * TIRE_GRIP_COEFF;
     }
 
     const degreesPerSecond = currentRpm * 360 / 60;
@@ -331,6 +469,37 @@ export function createEngineSimulation() {
 
     const accelG = dt > 0 ? (speedMps - prevSpeedMps) / (dt * 9.81) : 0;
 
+    catalystTemp = lerp(catalystTemp, exhaustGasTemp * 0.85, dt * 0.02);
+
+    const engineLoad = clamp(throttle * 100 * (currentRpm / REDLINE) * 0.8 + 20, 0, 100);
+    const intakeAirTemp = 75 + (currentRpm / REDLINE) * 15 + throttle * 10 + Math.random() * 2 - 1;
+    const mapKPa = intakeManifoldPressure * 0.6895;
+    const intakeVacuum = clamp((101.325 - mapKPa) * 0.2953, 0, 25);
+    const fuelPressure = 43 + (intakeManifoldPressure - 30) * 0.1;
+    const batteryVoltage = 14.2 - (currentRpm / REDLINE) * 0.3 - throttle * 0.1 + Math.random() * 0.05;
+
+    let o2SensorVoltage: number;
+    if (airFuelRatio < 14.7) {
+      o2SensorVoltage = 0.7 + Math.random() * 0.2;
+    } else {
+      o2SensorVoltage = 0.1 + Math.random() * 0.2;
+    }
+
+    if (currentRpm > 6000 && throttle > 0.8 && Math.random() < 0.001) {
+      knockCount++;
+    }
+
+    const speedKmh = speedMph * 1.60934;
+    const distanceMeters = distanceFt * 0.3048;
+
+    const currentGearDisplay = qmActive ? currentGear + 1 : 0;
+    const currentGearRatio = gearRatio;
+    const driveshaftRpm = qmActive ? currentRpm / gearRatio : 0;
+
+    const rearAxleLoadN = VEHICLE_MASS_KG * GRAVITY - frontAxleLoadN;
+
+    const tireSlipPercent = qmActive ? Math.abs(slipRatio) * 100 : 0;
+
     return {
       rpm: Math.round(currentRpm),
       throttlePosition: Math.round(throttle * 100),
@@ -359,6 +528,44 @@ export function createEngineSimulation() {
       accelerationG: Math.round(clamp(accelG, 0, 5) * 100) / 100,
       quarterMileET: qmET !== null ? Math.round(qmET * 1000) / 1000 : null,
       quarterMileActive: qmActive,
+
+      currentGearDisplay,
+      currentGearRatio: Math.round(currentGearRatio * 1000) / 1000,
+      driveshaftRpm: Math.round(driveshaftRpm),
+      clutchStatus,
+      wheelTorque: Math.round(wheelTorqueFtLb * 10) / 10,
+      wheelForce: Math.round(wheelForceN * N_TO_LBS * 10) / 10,
+
+      frontAxleLoad: Math.round(frontAxleLoadN * N_TO_LBS * 10) / 10,
+      rearAxleLoad: Math.round(rearAxleLoadN * N_TO_LBS * 10) / 10,
+      weightTransfer: qmActive ? Math.round(weightTransferN * N_TO_LBS * 10) / 10 : 0,
+      tireSlipPercent: Math.round(tireSlipPercent * 10) / 10,
+      tractionLimit: Math.round(maxTractionForceN * N_TO_LBS * 10) / 10,
+      tireTemp: Math.round(tireTemp * 10) / 10,
+
+      sixtyFootTime: sixtyFootTime !== null ? Math.round(sixtyFootTime * 1000) / 1000 : null,
+      threeThirtyTime: threeThirtyTime !== null ? Math.round(threeThirtyTime * 1000) / 1000 : null,
+      eighthMileTime: eighthMileTime !== null ? Math.round(eighthMileTime * 1000) / 1000 : null,
+      thousandFootTime: thousandFootTime !== null ? Math.round(thousandFootTime * 1000) / 1000 : null,
+      trapSpeed: trapSpeed !== null ? Math.round(trapSpeed * 10) / 10 : null,
+      peakAccelG: Math.round(peakAccelG * 100) / 100,
+      peakWheelHp: Math.round(peakWheelHp * 10) / 10,
+
+      dragForce: qmActive ? Math.round(dragForceN * N_TO_LBS * 10) / 10 : 0,
+      rollingResistance: Math.round(rollingForceN * N_TO_LBS * 10) / 10,
+      netForce: Math.round(netForceN * N_TO_LBS * 10) / 10,
+
+      vtecActive,
+      engineLoad: Math.round(engineLoad * 10) / 10,
+      intakeAirTemp: Math.round(intakeAirTemp * 10) / 10,
+      intakeVacuum: Math.round(intakeVacuum * 10) / 10,
+      fuelPressure: Math.round(fuelPressure * 10) / 10,
+      batteryVoltage: Math.round(batteryVoltage * 100) / 100,
+      o2SensorVoltage: Math.round(o2SensorVoltage * 100) / 100,
+      knockCount,
+      catalystTemp: Math.round(catalystTemp),
+      speedKmh: Math.round(speedKmh * 10) / 10,
+      distanceMeters: Math.round(distanceMeters * 10) / 10,
     };
   }
 
