@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { type EngineState } from "@/lib/engineSim";
 import { sharedSim } from "@/lib/sharedSim";
+import { EngineSound } from "@/lib/engineSound";
 import { Button } from "@/components/ui/button";
 
 interface GaugeProps {
@@ -38,10 +39,17 @@ function fmt(v: number | null, fallback: string = "---"): string {
 
 export default function Dashboard() {
   const simRef = useRef(sharedSim);
+  const soundRef = useRef<EngineSound | null>(null);
   const [state, setState] = useState<EngineState | null>(null);
   const [throttle, setThrottle] = useState(0);
+  const [soundOn, setSoundOn] = useState(false);
   const lastTimeRef = useRef(performance.now());
   const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    soundRef.current = new EngineSound();
+    return () => { soundRef.current?.destroy(); soundRef.current = null; };
+  }, []);
 
   const tick = useCallback(() => {
     const now = performance.now();
@@ -49,6 +57,14 @@ export default function Dashboard() {
     lastTimeRef.current = now;
     const newState = simRef.current.update(delta);
     setState(newState);
+    if (soundRef.current && soundRef.current.isEnabled()) {
+      const config = simRef.current.getEcuConfig();
+      soundRef.current.update(
+        newState.rpm, newState.throttlePosition / 100, newState.vtecActive,
+        newState.fuelCutActive, newState.revLimitActive,
+        config.antiLagEnabled, newState.launchControlActive
+      );
+    }
     rafRef.current = requestAnimationFrame(tick);
   }, []);
 
@@ -62,6 +78,20 @@ export default function Dashboard() {
     setThrottle(val * 100);
     simRef.current.setThrottle(val);
   }, []);
+
+  const handleSoundToggle = useCallback(() => {
+    if (!soundRef.current) return;
+    if (!soundOn) {
+      const ok = soundRef.current.init();
+      if (ok) {
+        soundRef.current.setEnabled(true);
+        setSoundOn(true);
+      }
+    } else {
+      soundRef.current.setEnabled(false);
+      setSoundOn(false);
+    }
+  }, [soundOn]);
 
   const handleLaunch = useCallback(() => {
     if (state?.quarterMileActive) {
@@ -79,11 +109,20 @@ export default function Dashboard() {
   return (
     <div className="fixed inset-0 bg-black text-white flex flex-col select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
       <div className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="gauge-scroll-area">
-        <div className="flex items-center justify-between px-3 pt-2 pb-1">
+        <div className="flex items-center justify-between px-3 pt-2 pb-1 gap-2">
           <span className="text-[10px] tracking-[0.3em] uppercase opacity-60 font-mono">B16A2 DOHC VTEC</span>
-          <Link href="/ecu" className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5" data-testid="link-ecu">
-            ECU TUNE
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSoundToggle}
+              className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5"
+              data-testid="button-sound-toggle"
+            >
+              {soundOn ? "SOUND ON" : "SOUND OFF"}
+            </button>
+            <Link href="/ecu" className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5" data-testid="link-ecu">
+              ECU TUNE
+            </Link>
+          </div>
         </div>
 
         <div className="grid grid-cols-4 gap-0" data-testid="gauge-grid">

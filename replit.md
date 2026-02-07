@@ -12,7 +12,8 @@ A minimalist, text-only dashboard that simulates a 2000 Honda Civic Si (B16A2) e
 - ECU config changes apply in real-time to the simulation
 
 ## Key Files
-- `client/src/pages/dashboard.tsx` - Scrollable dashboard UI with sectioned gauge grid and fixed bottom controls
+- `client/src/pages/dashboard.tsx` - Scrollable dashboard UI with sectioned gauge grid, sound toggle, and fixed bottom controls
+- `client/src/lib/engineSound.ts` - Web Audio API engine sound synthesis (multi-oscillator, VTEC crossover, rev limiter, decel pops, anti-lag bangs)
 - `client/src/pages/ecu.tsx` - Full ECU tuning page with ~80 configurable parameters organized into 14 sections
 - `client/src/lib/engineSim.ts` - Engine physics simulation with EcuConfig interface, configurable constants
 - `client/src/lib/sharedSim.ts` - Shared singleton simulation instance for cross-page state
@@ -153,6 +154,7 @@ Peak G, Peak Wheel HP
 - "DEFAULTS" button on ECU page resets all parameters to stock B16A2 values
 
 ## Recent Changes
+- 2026-02-07: Added real-time engine sound synthesis via Web Audio API (multi-oscillator, VTEC crossover, rev limiter bounce, decel pops, anti-lag bangs)
 - 2026-02-07: Added cam profile tuning (intake/exhaust lift & duration for both low cam and VTEC cam) affecting torque curve
 - 2026-02-07: Added supercharger simulation (centrifugal/roots/twinscrew) with parasitic drag modeling
 - 2026-02-07: Added nitrous oxide system with configurable shot size and activation RPM
