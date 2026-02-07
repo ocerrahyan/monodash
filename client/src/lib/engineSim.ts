@@ -46,7 +46,7 @@ function getStrokePhase(crankAngle: number): string {
 
 function getValveLift(crankAngle: number, isIntake: boolean): number {
   const normalized = ((crankAngle % 720) + 720) % 720;
-  const maxLift = 9.5;
+  const maxLift = isIntake ? 10.6 : 9.4;
 
   if (isIntake) {
     if (normalized >= 350 || normalized < 190) {
@@ -78,7 +78,7 @@ function getCylinderPressure(crankAngle: number, throttle: number, rpm: number):
   }
   if (normalized < 360) {
     const progress = (normalized - 180) / 180;
-    const compressionRatio = 10.5;
+    const compressionRatio = COMPRESSION_RATIO;
     const pressure = 14.7 * Math.pow(compressionRatio, 1.3 * progress) * loadFactor;
     return pressure;
   }
@@ -96,8 +96,8 @@ function getCylinderPressure(crankAngle: number, throttle: number, rpm: number):
 
 const TIRE_DIAMETER_IN = 23.5;
 const TIRE_CIRCUMFERENCE_FT = (TIRE_DIAMETER_IN * Math.PI) / 12;
-const FINAL_DRIVE_RATIO = 3.73;
-const GEAR_RATIOS = [3.42, 2.14, 1.45, 1.0, 0.78];
+const FINAL_DRIVE_RATIO = 4.400;
+const GEAR_RATIOS = [3.230, 2.105, 1.458, 1.107, 0.848];
 const TIRE_MASS_LB = 16;
 const TIRE_MASS_KG = TIRE_MASS_LB * 0.4536;
 const TIRE_RADIUS_M = TIRE_DIAMETER_IN * 0.0254 / 2;
@@ -106,25 +106,48 @@ const TOTAL_TIRE_INERTIA = 4 * TIRE_INERTIA;
 const VEHICLE_MASS_LB = 2612;
 const VEHICLE_MASS_KG = VEHICLE_MASS_LB * 0.4536;
 const EFFECTIVE_MASS_KG = VEHICLE_MASS_KG + TOTAL_TIRE_INERTIA / (TIRE_RADIUS_M * TIRE_RADIUS_M);
-const DRAG_COEFF = 0.35;
-const FRONTAL_AREA_M2 = 2.2;
+const DRAG_COEFF = 0.34;
+const FRONTAL_AREA_M2 = 1.94;
 const AIR_DENSITY = 1.225;
-const ROLLING_RESISTANCE = 0.015;
+const ROLLING_RESISTANCE = 0.012;
 const QUARTER_MILE_FT = 1320;
 const DRIVETRAIN_LOSS = 0.15;
+const REDLINE = 8200;
+const IDLE_RPM = 750;
+const VTEC_RPM = 5500;
+const COMPRESSION_RATIO = 10.2;
+
+const B16A2_TORQUE_MAP: [number, number][] = [
+  [750, 40], [1000, 50], [1500, 58], [2000, 67], [2500, 75],
+  [3000, 82], [3500, 88], [4000, 93], [4500, 96], [5000, 99],
+  [5500, 103], [6000, 107], [6500, 109], [7000, 111], [7500, 109],
+  [7600, 108], [8000, 100], [8200, 95],
+];
+
+function getB16Torque(rpm: number, throttlePos: number): number {
+  const clamped = clamp(rpm, B16A2_TORQUE_MAP[0][0], B16A2_TORQUE_MAP[B16A2_TORQUE_MAP.length - 1][0]);
+  let i = 0;
+  while (i < B16A2_TORQUE_MAP.length - 1 && B16A2_TORQUE_MAP[i + 1][0] <= clamped) i++;
+  if (i >= B16A2_TORQUE_MAP.length - 1) return B16A2_TORQUE_MAP[B16A2_TORQUE_MAP.length - 1][1] * throttlePos;
+  const [r0, t0] = B16A2_TORQUE_MAP[i];
+  const [r1, t1] = B16A2_TORQUE_MAP[i + 1];
+  const frac = (clamped - r0) / (r1 - r0);
+  const wotTorque = t0 + (t1 - t0) * frac;
+  return wotTorque * (0.1 + 0.9 * throttlePos);
+}
 
 function getGear(speedMph: number): number {
-  if (speedMph < 15) return 0;
-  if (speedMph < 35) return 1;
-  if (speedMph < 60) return 2;
-  if (speedMph < 90) return 3;
+  if (speedMph < 18) return 0;
+  if (speedMph < 38) return 1;
+  if (speedMph < 62) return 2;
+  if (speedMph < 95) return 3;
   return 4;
 }
 
 export function createEngineSimulation() {
   let crankAngle = 0;
-  let currentRpm = 850;
-  let targetRpm = 850;
+  let currentRpm = IDLE_RPM;
+  let targetRpm = IDLE_RPM;
   let throttle = 0;
   let coolantTemp = 185;
   let oilTemp = 210;
@@ -139,7 +162,7 @@ export function createEngineSimulation() {
 
   function setThrottle(value: number) {
     throttle = clamp(value, 0, 1);
-    targetRpm = 850 + throttle * 5150;
+    targetRpm = IDLE_RPM + throttle * (REDLINE - IDLE_RPM);
   }
 
   function startQuarterMile() {
@@ -159,7 +182,7 @@ export function createEngineSimulation() {
     qmActive = false;
     prevSpeedMps = 0;
     throttle = 0;
-    targetRpm = 850;
+    targetRpm = IDLE_RPM;
   }
 
   function update(deltaMs: number): EngineState {
@@ -174,8 +197,8 @@ export function createEngineSimulation() {
       const wheelRps = speedMps / (TIRE_CIRCUMFERENCE_FT * 0.3048);
       const drivenRpm = wheelRps * 60 * totalRatio;
 
-      const launchRpm = 1500 + throttle * 3000;
-      const clutchSlipThreshold = 2000;
+      const launchRpm = 1500 + throttle * 4500;
+      const clutchSlipThreshold = 3000;
       let effectiveRpm: number;
       if (drivenRpm < clutchSlipThreshold) {
         const blend = drivenRpm / clutchSlipThreshold;
@@ -183,11 +206,10 @@ export function createEngineSimulation() {
       } else {
         effectiveRpm = drivenRpm;
       }
-      currentRpm = clamp(Math.max(effectiveRpm, 1500), 1500, 6200);
+      currentRpm = clamp(Math.max(effectiveRpm, IDLE_RPM), IDLE_RPM, REDLINE);
 
-      const baseTorque = 15 + throttle * 50;
-      const rpmFactor = 1 - Math.pow((currentRpm - 3500) / 3500, 2) * 0.3;
-      const engineTorqueNm = baseTorque * rpmFactor * 1.3558;
+      const torqueFtLb = getB16Torque(currentRpm, throttle);
+      const engineTorqueNm = torqueFtLb * 1.3558;
 
       const wheelRadius = TIRE_DIAMETER_IN * 0.0254 / 2;
       const wheelForceN = (engineTorqueNm * totalRatio * (1 - DRIVETRAIN_LOSS)) / wheelRadius;
@@ -211,9 +233,9 @@ export function createEngineSimulation() {
         distanceFt = QUARTER_MILE_FT;
       }
     } else if (!qmActive) {
-      const rpmAccelRate = throttle > (currentRpm - 850) / 5150 ? 3000 : 4000;
+      const rpmAccelRate = throttle > (currentRpm - IDLE_RPM) / (REDLINE - IDLE_RPM) ? 4000 : 5000;
       currentRpm = lerp(currentRpm, targetRpm, clamp(dt * rpmAccelRate / 5000, 0, 0.15));
-      currentRpm = clamp(currentRpm, 800, 6200);
+      currentRpm = clamp(currentRpm, IDLE_RPM - 50, REDLINE);
     }
 
     const degreesPerSecond = currentRpm * 360 / 60;
@@ -229,26 +251,28 @@ export function createEngineSimulation() {
     const intakeValveLift = getValveLift(crankAngle, true);
     const exhaustValveLift = getValveLift(crankAngle, false);
 
-    const baseTorque = 15 + throttle * 50;
-    const rpmFactor = 1 - Math.pow((currentRpm - 3500) / 3500, 2) * 0.3;
-    const torque = baseTorque * rpmFactor;
+    const torque = getB16Torque(currentRpm, throttle);
     const hp = (torque * currentRpm) / 5252;
 
     const baseMAP = 30 + throttle * 71;
     const intakeManifoldPressure = clamp(baseMAP + Math.sin(crankAngle * Math.PI / 180) * 3, 20, 102);
 
-    const baseEGT = 400 + throttle * 800 + (currentRpm / 6000) * 300;
+    const rpmNorm = currentRpm / REDLINE;
+    const baseEGT = 400 + throttle * 900 + rpmNorm * 350;
     const exhaustGasTemp = baseEGT + Math.random() * 10 - 5;
 
-    const baseAFR = throttle > 0.8 ? 12.5 : throttle > 0.5 ? 13.5 : 14.7;
+    const baseAFR = throttle > 0.8 ? 12.2 : throttle > 0.5 ? 13.2 : 14.7;
     const airFuelRatio = baseAFR + Math.random() * 0.3 - 0.15;
 
-    const oilPressure = 15 + (currentRpm / 6000) * 50 + throttle * 5;
-    const ignitionTiming = 10 + (currentRpm / 6000) * 25 - throttle * 5;
+    const oilPressure = 14 + rpmNorm * 55 + throttle * 5;
+    const ignitionTiming = 12 + rpmNorm * 28 - throttle * 6;
     const sparkAdvance = ignitionTiming + 2;
 
-    const fuelInjectionPulse = 2 + throttle * 8 + (currentRpm / 6000) * 3;
-    const volumetricEfficiency = 75 + throttle * 20 - Math.abs(currentRpm - 4000) / 4000 * 15;
+    const fuelInjectionPulse = 1.8 + throttle * 9 + rpmNorm * 3.5;
+    const vtecActive = currentRpm >= VTEC_RPM;
+    const volumetricEfficiency = vtecActive
+      ? 88 + throttle * 12 - Math.abs(currentRpm - 7000) / 7000 * 10
+      : 75 + throttle * 15 - Math.abs(currentRpm - 4000) / 4000 * 12;
     const fuelConsumption = (currentRpm * fuelInjectionPulse * 0.001) / 60;
 
     const speedMph = speedMps * 2.237;
