@@ -15,9 +15,9 @@ interface GaugeProps {
 function Gauge({ label, value, unit, testId, highlight }: GaugeProps) {
   return (
     <div className="flex flex-col items-center justify-center py-2 px-1" data-testid={testId}>
-      <span className="text-[9px] tracking-wider uppercase opacity-40 leading-tight text-center font-mono">{label}</span>
+      <span className="text-[9px] tracking-wider uppercase opacity-70 leading-tight text-center font-mono">{label}</span>
       <span className={`text-[18px] font-mono font-bold leading-tight tabular-nums ${highlight ? "opacity-100" : ""}`} data-testid={`value-${testId}`}>{value}</span>
-      <span className="text-[8px] tracking-wide uppercase opacity-30 leading-tight font-mono">{unit}</span>
+      <span className="text-[8px] tracking-wide uppercase opacity-60 leading-tight font-mono">{unit}</span>
     </div>
   );
 }
@@ -25,9 +25,9 @@ function Gauge({ label, value, unit, testId, highlight }: GaugeProps) {
 function SectionHeader({ title }: { title: string }) {
   return (
     <div className="col-span-4 flex items-center gap-2 pt-4 pb-1 px-2">
-      <div className="h-px flex-1 bg-white/10" />
-      <span className="text-[9px] tracking-[0.3em] uppercase opacity-30 font-mono whitespace-nowrap">{title}</span>
-      <div className="h-px flex-1 bg-white/10" />
+      <div className="h-px flex-1 bg-white/20" />
+      <span className="text-[9px] tracking-[0.3em] uppercase opacity-60 font-mono whitespace-nowrap">{title}</span>
+      <div className="h-px flex-1 bg-white/20" />
     </div>
   );
 }
@@ -80,8 +80,8 @@ export default function Dashboard() {
     <div className="fixed inset-0 bg-black text-white flex flex-col select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
       <div className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="gauge-scroll-area">
         <div className="flex items-center justify-between px-3 pt-2 pb-1">
-          <span className="text-[10px] tracking-[0.3em] uppercase opacity-30 font-mono">B16A2 DOHC VTEC</span>
-          <Link href="/ecu" className="text-[10px] tracking-wider uppercase opacity-40 font-mono border border-white/15 px-2 py-0.5" data-testid="link-ecu">
+          <span className="text-[10px] tracking-[0.3em] uppercase opacity-60 font-mono">B16A2 DOHC VTEC</span>
+          <Link href="/ecu" className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5" data-testid="link-ecu">
             ECU TUNE
           </Link>
         </div>
@@ -182,29 +182,29 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="shrink-0 px-4 pb-3 pt-2 border-t border-white/10 bg-black" data-testid="controls-area">
+      <div className="shrink-0 px-4 pb-3 pt-2 border-t border-white/20 bg-black" data-testid="controls-area">
         <div className="flex items-center gap-3">
-          <span className="text-[9px] tracking-wider uppercase opacity-40 font-mono w-16">Throttle</span>
+          <span className="text-[9px] tracking-wider uppercase opacity-70 font-mono w-16">Throttle</span>
           <input
             type="range"
             min="0"
             max="100"
             value={throttle}
             onChange={handleThrottle}
-            className="flex-1 h-1 appearance-none bg-white/10 rounded-none outline-none cursor-pointer disabled:opacity-30"
+            className="flex-1 h-1 appearance-none bg-white/20 rounded-none outline-none cursor-pointer disabled:opacity-30"
             style={{
               WebkitAppearance: "none",
-              background: `linear-gradient(to right, white ${throttle}%, rgba(255,255,255,0.1) ${throttle}%)`,
+              background: `linear-gradient(to right, white ${throttle}%, rgba(255,255,255,0.2) ${throttle}%)`,
             }}
             data-testid="input-throttle"
           />
-          <span className="text-[11px] font-mono tabular-nums w-8 text-right opacity-60" data-testid="text-throttle-value">{Math.round(throttle)}%</span>
+          <span className="text-[11px] font-mono tabular-nums w-8 text-right opacity-80" data-testid="text-throttle-value">{Math.round(throttle)}%</span>
         </div>
 
         <Button
           onClick={handleLaunch}
           variant="outline"
-          className="w-full mt-2 text-[11px] tracking-[0.2em] uppercase font-mono bg-transparent text-white/70 border-white/20"
+          className="w-full mt-2 text-[11px] tracking-[0.2em] uppercase font-mono bg-transparent text-white/90 border-white/30"
           data-testid="button-launch"
         >
           {state.quarterMileActive ? (qmFinished ? `FINISHED ${state.quarterMileET}s — TAP TO RESET` : "RUNNING — TAP TO RESET") : "LAUNCH 1/4 MILE"}

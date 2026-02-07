@@ -78,15 +78,15 @@ function ParamRow({ label, configKey, config, onChange, unit, step = 1, min, max
   if (typeof value === "boolean") {
     return (
       <div className="flex items-center justify-between py-1 px-2 border-b border-white/5" data-testid={testId}>
-        <span className="text-[10px] tracking-wide uppercase opacity-50 font-mono flex-1">{label}</span>
+        <span className="text-[10px] tracking-wide uppercase opacity-80 font-mono flex-1">{label}</span>
         <button
           onClick={() => onChange(configKey, !value)}
-          className="text-[11px] font-mono tabular-nums px-2 py-0.5 border border-white/20 bg-transparent text-white/80 min-w-[50px] text-center"
+          className="text-[11px] font-mono tabular-nums px-2 py-0.5 border border-white/30 bg-transparent text-white min-w-[50px] text-center"
           data-testid={`toggle-${testId}`}
         >
           {value ? "ON" : "OFF"}
         </button>
-        {unit && <span className="text-[8px] opacity-30 font-mono ml-1 w-10 text-right">{unit}</span>}
+        {unit && <span className="text-[8px] opacity-60 font-mono ml-1 w-10 text-right">{unit}</span>}
       </div>
     );
   }
@@ -95,13 +95,13 @@ function ParamRow({ label, configKey, config, onChange, unit, step = 1, min, max
     const options = getStringOptions(configKey);
     return (
       <div className="flex items-center justify-between py-1 px-2 border-b border-white/5" data-testid={testId}>
-        <span className="text-[10px] tracking-wide uppercase opacity-50 font-mono flex-1">{label}</span>
+        <span className="text-[10px] tracking-wide uppercase opacity-80 font-mono flex-1">{label}</span>
         <div className="flex gap-1">
           {options.map((opt) => (
             <button
               key={opt}
               onClick={() => onChange(configKey, opt)}
-              className={`text-[9px] font-mono px-1.5 py-0.5 border ${value === opt ? "border-white/60 text-white" : "border-white/15 text-white/30"}`}
+              className={`text-[9px] font-mono px-1.5 py-0.5 border ${value === opt ? "border-white/70 text-white" : "border-white/25 text-white/50"}`}
               data-testid={`option-${testId}-${opt}`}
             >
               {opt.toUpperCase()}
@@ -114,14 +114,14 @@ function ParamRow({ label, configKey, config, onChange, unit, step = 1, min, max
 
   return (
     <div className="flex items-center justify-between py-1 px-2 border-b border-white/5" data-testid={testId}>
-      <span className="text-[10px] tracking-wide uppercase opacity-50 font-mono flex-1">{label}</span>
+      <span className="text-[10px] tracking-wide uppercase opacity-80 font-mono flex-1">{label}</span>
       <div className="flex items-center gap-1">
         <button
           onClick={() => {
             const newVal = (value as number) - step;
             onChange(configKey, min !== undefined ? Math.max(min, newVal) : newVal);
           }}
-          className="text-[11px] font-mono px-1.5 py-0.5 border border-white/15 text-white/40 active:text-white"
+          className="text-[11px] font-mono px-1.5 py-0.5 border border-white/25 text-white/70 active:text-white"
           data-testid={`dec-${testId}`}
         >
           -
@@ -132,7 +132,7 @@ function ParamRow({ label, configKey, config, onChange, unit, step = 1, min, max
           step={step}
           min={min}
           max={max}
-          className="bg-transparent text-white/90 text-[11px] font-mono tabular-nums w-16 text-center border border-white/15 py-0.5 outline-none focus:border-white/40"
+          className="bg-transparent text-white text-[11px] font-mono tabular-nums w-16 text-center border border-white/25 py-0.5 outline-none focus:border-white/50"
           testId={`input-${testId}`}
         />
         <button
@@ -140,13 +140,13 @@ function ParamRow({ label, configKey, config, onChange, unit, step = 1, min, max
             const newVal = (value as number) + step;
             onChange(configKey, max !== undefined ? Math.min(max, newVal) : newVal);
           }}
-          className="text-[11px] font-mono px-1.5 py-0.5 border border-white/15 text-white/40 active:text-white"
+          className="text-[11px] font-mono px-1.5 py-0.5 border border-white/25 text-white/70 active:text-white"
           data-testid={`inc-${testId}`}
         >
           +
         </button>
       </div>
-      {unit && <span className="text-[8px] opacity-30 font-mono ml-1 w-12 text-right">{unit}</span>}
+      {unit && <span className="text-[8px] opacity-60 font-mono ml-1 w-12 text-right">{unit}</span>}
     </div>
   );
 }
@@ -166,11 +166,11 @@ function ArrayParamRow({ label, configKey, config, onChange, unit, step = 0.001,
   const values = config[configKey] as number[];
   return (
     <div className="py-1 px-2 border-b border-white/5" data-testid={testId}>
-      <span className="text-[10px] tracking-wide uppercase opacity-50 font-mono block mb-1">{label}</span>
+      <span className="text-[10px] tracking-wide uppercase opacity-80 font-mono block mb-1">{label}</span>
       <div className="flex gap-1 flex-wrap">
         {values.map((v, i) => (
           <div key={i} className="flex flex-col items-center">
-            <span className="text-[7px] opacity-30 font-mono">{labels[i] || `${i + 1}`}</span>
+            <span className="text-[7px] opacity-60 font-mono">{labels[i] || `${i + 1}`}</span>
             <EditableNumberInput
               value={v}
               onCommit={(newVal) => {
@@ -179,10 +179,10 @@ function ArrayParamRow({ label, configKey, config, onChange, unit, step = 0.001,
                 onChange(configKey, newArr);
               }}
               step={step}
-              className="bg-transparent text-white/90 text-[10px] font-mono tabular-nums w-12 text-center border border-white/15 py-0.5 outline-none focus:border-white/40"
+              className="bg-transparent text-white text-[10px] font-mono tabular-nums w-12 text-center border border-white/25 py-0.5 outline-none focus:border-white/50"
               testId={`input-${testId}-${i}`}
             />
-            {unit && <span className="text-[7px] opacity-20 font-mono">{unit}</span>}
+            {unit && <span className="text-[7px] opacity-50 font-mono">{unit}</span>}
           </div>
         ))}
       </div>
@@ -203,9 +203,9 @@ function getStringOptions(key: ConfigKey): string[] {
 function SectionHeader({ title }: { title: string }) {
   return (
     <div className="flex items-center gap-2 pt-4 pb-1 px-2">
-      <div className="h-px flex-1 bg-white/10" />
-      <span className="text-[9px] tracking-[0.3em] uppercase opacity-30 font-mono whitespace-nowrap">{title}</span>
-      <div className="h-px flex-1 bg-white/10" />
+      <div className="h-px flex-1 bg-white/20" />
+      <span className="text-[9px] tracking-[0.3em] uppercase opacity-60 font-mono whitespace-nowrap">{title}</span>
+      <div className="h-px flex-1 bg-white/20" />
     </div>
   );
 }
@@ -239,14 +239,14 @@ export default function EcuPage() {
 
   return (
     <div className="fixed inset-0 bg-black text-white flex flex-col select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
-      <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-white/10">
-        <Link href="/" className="text-[10px] tracking-wider uppercase opacity-40 font-mono" data-testid="link-dashboard">
+      <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-white/20">
+        <Link href="/" className="text-[10px] tracking-wider uppercase opacity-70 font-mono" data-testid="link-dashboard">
           GAUGES
         </Link>
-        <span className="text-[10px] tracking-[0.3em] uppercase opacity-50 font-mono">ECU TUNING</span>
+        <span className="text-[10px] tracking-[0.3em] uppercase opacity-80 font-mono">ECU TUNING</span>
         <button
           onClick={handleReset}
-          className="text-[10px] tracking-wider uppercase opacity-40 font-mono border border-white/15 px-2 py-0.5"
+          className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5"
           data-testid="button-reset-defaults"
         >
           DEFAULTS
