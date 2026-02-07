@@ -154,6 +154,9 @@ Peak G, Peak Wheel HP
 - "DEFAULTS" button on ECU page resets all parameters to stock B16A2 values
 
 ## Recent Changes
+- 2026-02-07: Added turbo sound synthesis (spool, whistle, blow-off valve) and tire chirp/squeal sounds to engine audio
+- 2026-02-07: Tire slip now calculated in all modes (not just quarter-mile) — high-power builds produce wheelspin in 1st gear
+- 2026-02-07: Non-QM mode now computes wheel force vs traction with traction control intervention
 - 2026-02-07: Added real-time engine sound synthesis via Web Audio API (multi-oscillator, VTEC crossover, rev limiter bounce, decel pops, anti-lag bangs)
 - 2026-02-07: Added cam profile tuning (intake/exhaust lift & duration for both low cam and VTEC cam) affecting torque curve
 - 2026-02-07: Added supercharger simulation (centrifugal/roots/twinscrew) with parasitic drag modeling
