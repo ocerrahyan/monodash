@@ -638,14 +638,15 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       const rpmFactor = clamp((currentRpm - 2000) / 4000, 0, 1);
       const throttleFactor = throttle;
       const gearTarget = config.boostByGear[clamp(currentGear, 0, config.boostByGear.length - 1)] || config.boostTargetPsi;
-      const targetBoost = Math.min(gearTarget, config.boostTargetPsi) * rpmFactor * throttleFactor;
+      const targetBoost = gearTarget * rpmFactor * throttleFactor;
       boostPsi = lerp(boostPsi, targetBoost, dt * 3);
-      boostPsi = clamp(boostPsi, 0, config.boostCutPsi);
 
       if (boostPsi >= config.boostCutPsi) {
         fuelCutActive = true;
         fuelCutFraction = 1.0;
+        boostPsi = lerp(boostPsi, 0, dt * 10);
       }
+      boostPsi = clamp(boostPsi, 0, config.boostCutPsi + 2);
     } else if (config.superchargerEnabled) {
       const eff = config.superchargerEfficiency / 100;
       let scBoost: number;
