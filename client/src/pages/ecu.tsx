@@ -229,6 +229,9 @@ export default function EcuPage() {
   const handleChange = useCallback((key: ConfigKey, value: any) => {
     setConfig((prev) => {
       const next = { ...prev, [key]: value };
+      if (key === "boostTargetPsi") {
+        next.boostByGear = next.boostByGear.map(() => value as number);
+      }
       sharedSim.setEcuConfig(next);
       return next;
     });
