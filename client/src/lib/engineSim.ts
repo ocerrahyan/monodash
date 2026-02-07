@@ -865,14 +865,69 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
         currentRpm = fuelCutRpm;
       }
 
-      tireTemp = lerp(tireTemp, 80, dt * 0.01);
-      tireTemp = clamp(tireTemp, 80, 300);
-
-      clutchStatus = "ENGAGED";
       gearRatio = config.gearRatios[0];
       totalRatio = gearRatio * config.finalDriveRatio;
+      currentGear = 0;
+      const wheelRadius = derived.tireRadiusM;
+
       frontAxleLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
       maxTractionForceN = frontAxleLoadN * config.tireGripCoeff;
+
+      let freeRevTorque = getB16Torque(currentRpm, throttle);
+      const freeRevCamMult = getCamTorqueMultiplier(currentRpm, vtecActive, config);
+      freeRevTorque *= freeRevCamMult;
+
+      if (config.turboEnabled && boostPsi > 0) {
+        freeRevTorque *= 1 + (boostPsi / 14.7) * 0.9;
+      } else if (config.superchargerEnabled && boostPsi > 0) {
+        freeRevTorque *= 1 + (boostPsi / 14.7) * 0.9;
+        freeRevTorque -= scParasiticLoss;
+      }
+      if (config.nitrousEnabled) {
+        const nosActive = currentRpm >= config.nitrousActivationRpm && (throttle >= 0.95 || !config.nitrousFullThrottleOnly);
+        if (nosActive && currentRpm > 0) {
+          nitrousActiveNow = true;
+          freeRevTorque += config.nitrousHpAdder * 5252 / currentRpm;
+        }
+      }
+
+      const freeRevTimingFactor = Math.max(0.3, 1 - timingRetardTotal / 60);
+      freeRevTorque *= freeRevTimingFactor;
+      const freeRevFuelFactor = 1 - fuelCutFraction;
+      freeRevTorque *= freeRevFuelFactor;
+
+      const engineTorqueNm = freeRevTorque * 1.3558;
+      wheelForceN = (engineTorqueNm * totalRatio * (1 - derived.drivetrainLoss)) / wheelRadius;
+      wheelTorqueFtLb = freeRevTorque * totalRatio * (1 - derived.drivetrainLoss);
+
+      if (wheelForceN > maxTractionForceN && throttle > 0.3) {
+        const excessForceRatio = (wheelForceN - maxTractionForceN) / maxTractionForceN;
+        slipRatio = clamp(excessForceRatio * 0.5, 0.03, 2.0);
+
+        if (config.tractionControlEnabled && slipRatio * 100 > config.tractionSlipThreshold) {
+          tractionControlActive = true;
+          const modeMultiplier = config.tractionControlMode === 'mild' ? 0.5 : config.tractionControlMode === 'aggressive' ? 1.5 : 1.0;
+          timingRetardTotal += config.tractionRetardDeg * modeMultiplier;
+          fuelCutFraction = Math.max(fuelCutFraction, (config.tractionFuelCutPct / 100) * modeMultiplier);
+          fuelCutFraction = clamp(fuelCutFraction, 0, 1);
+
+          const tcTimingFactor = Math.max(0.3, 1 - config.tractionRetardDeg * modeMultiplier / 60);
+          const tcFuelFactor = 1 - clamp((config.tractionFuelCutPct / 100) * modeMultiplier, 0, 1);
+          wheelForceN *= tcTimingFactor * tcFuelFactor;
+
+          const reducedExcess = Math.max(0, (wheelForceN - maxTractionForceN) / maxTractionForceN);
+          slipRatio = clamp(reducedExcess * 0.5, 0, 2.0);
+        }
+
+        const slipHeat = slipRatio * dt * 150;
+        tireTemp += slipHeat;
+      } else {
+        slipRatio = 0;
+      }
+
+      tireTemp = lerp(tireTemp, 80, dt * 0.01);
+      tireTemp = clamp(tireTemp, 80, 300);
+      clutchStatus = "ENGAGED";
     }
 
     const degreesPerSecond = currentRpm * 360 / 60;
@@ -968,7 +1023,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     const fuelConsumption = (currentRpm * fuelInjectionPulse * 0.001) / 60;
 
     const speedMph = speedMps * 2.237;
-    const tireRpm = qmActive ? (speedMps / (derived.tireCircumferenceFt * 0.3048)) * 60 : 0;
+    const tireRpm = speedMps > 0 ? (speedMps / (derived.tireCircumferenceFt * 0.3048)) * 60 : (qmActive ? 0 : currentRpm / totalRatio);
 
     const accelG = dt > 0 ? (speedMps - prevSpeedMps) / (dt * 9.81) : 0;
 
@@ -998,13 +1053,13 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     const speedKmh = speedMph * 1.60934;
     const distanceMeters = distanceFt * 0.3048;
 
-    const currentGearDisplay = qmActive ? currentGear + 1 : 0;
+    const currentGearDisplay = currentGear + 1;
     const currentGearRatio = gearRatio;
-    const driveshaftRpm = qmActive ? currentRpm / gearRatio : 0;
+    const driveshaftRpm = gearRatio > 0 ? currentRpm / gearRatio : 0;
 
     const rearAxleLoadN = derived.vehicleMassKg * GRAVITY - frontAxleLoadN;
 
-    const tireSlipPercent = qmActive ? Math.abs(slipRatio) * 100 : 0;
+    const tireSlipPercent = Math.abs(slipRatio) * 100;
 
     if (fuelCutFraction > 0) {
       fuelCutActive = true;
