@@ -53,7 +53,6 @@ export default function Dashboard() {
       setThrottle(0);
     } else {
       simRef.current.startQuarterMile();
-      setThrottle(100);
     }
   }, [state?.quarterMileActive]);
 
@@ -112,7 +111,7 @@ export default function Dashboard() {
             max="100"
             value={throttle}
             onChange={handleThrottle}
-            disabled={state.quarterMileActive}
+            
             className="flex-1 h-1 appearance-none bg-white/10 rounded-none outline-none cursor-pointer disabled:opacity-30"
             style={{
               WebkitAppearance: "none",

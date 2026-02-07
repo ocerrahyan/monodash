@@ -143,8 +143,6 @@ export function createEngineSimulation() {
     qmET = null;
     qmActive = true;
     prevSpeedMps = 0;
-    throttle = 1.0;
-    targetRpm = 6000;
   }
 
   function resetQuarterMile() {
@@ -170,7 +168,7 @@ export function createEngineSimulation() {
       const wheelRps = speedMps / (TIRE_CIRCUMFERENCE_FT * 0.3048);
       const drivenRpm = wheelRps * 60 * totalRatio;
 
-      const launchRpm = 4500;
+      const launchRpm = 1500 + throttle * 3000;
       const clutchSlipThreshold = 2000;
       let effectiveRpm: number;
       if (drivenRpm < clutchSlipThreshold) {
@@ -248,10 +246,7 @@ export function createEngineSimulation() {
     const fuelConsumption = (currentRpm * fuelInjectionPulse * 0.001) / 60;
 
     const speedMph = speedMps * 2.237;
-    const gear = getGear(speedMph);
-    const gearRatio = GEAR_RATIOS[gear];
-    const totalRatio = gearRatio * FINAL_DRIVE_RATIO;
-    const tireRpm = qmActive ? (speedMps / (TIRE_CIRCUMFERENCE_FT * 0.3048)) * 60 : currentRpm / totalRatio;
+    const tireRpm = qmActive ? (speedMps / (TIRE_CIRCUMFERENCE_FT * 0.3048)) * 60 : 0;
 
     const accelG = dt > 0 ? (speedMps - prevSpeedMps) / (dt * 9.81) : 0;
 
