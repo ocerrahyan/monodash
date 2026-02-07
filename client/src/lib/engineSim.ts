@@ -1,3 +1,187 @@
+export interface EcuConfig {
+  redlineRpm: number;
+  fuelCutRpm: number;
+  revLimitType: 'fuel_cut' | 'ignition_cut' | 'both';
+  softCutRpm: number;
+  softCutRetard: number;
+  speedLimiterMph: number;
+
+  vtecEngageRpm: number;
+  vtecDisengageRpm: number;
+  vtecOilPressureMin: number;
+
+  injectorSizeCc: number;
+  fuelPressurePsi: number;
+  targetAfrIdle: number;
+  targetAfrCruise: number;
+  targetAfrWot: number;
+  targetAfrVtec: number;
+  crankingFuelPw: number;
+  warmupEnrichPct: number;
+  accelEnrichPct: number;
+  decelFuelCutRpm: number;
+  closedLoopEnabled: boolean;
+  closedLoopAfrTarget: number;
+
+  baseTimingDeg: number;
+  maxAdvanceDeg: number;
+  idleTimingDeg: number;
+  knockRetardDeg: number;
+  knockSensitivity: number;
+  knockRecoveryRate: number;
+
+  turboEnabled: boolean;
+  wastegateBaseDuty: number;
+  boostTargetPsi: number;
+  boostCutPsi: number;
+  antiLagEnabled: boolean;
+  antiLagRetard: number;
+  boostByGear: number[];
+
+  targetIdleRpm: number;
+  idleIacvPosition: number;
+  idleIgnitionTiming: number;
+
+  launchControlEnabled: boolean;
+  launchControlRpm: number;
+  twoStepEnabled: boolean;
+  twoStepRpm: number;
+  launchRetardDeg: number;
+  launchFuelCutPct: number;
+  flatFootShiftEnabled: boolean;
+  flatFootShiftCutTime: number;
+
+  tractionControlEnabled: boolean;
+  tractionSlipThreshold: number;
+  tractionRetardDeg: number;
+  tractionFuelCutPct: number;
+  tractionControlMode: 'mild' | 'moderate' | 'aggressive';
+
+  gearRatios: number[];
+  finalDriveRatio: number;
+  gearRevLimits: number[];
+
+  vehicleMassLb: number;
+  tireDiameterIn: number;
+  tireMassLb: number;
+  dragCoefficient: number;
+  frontalAreaM2: number;
+  rollingResistanceCoeff: number;
+  drivetrainLossPct: number;
+
+  tireGripCoeff: number;
+  wheelbaseM: number;
+  cgHeightM: number;
+  frontWeightBias: number;
+  optimalSlipRatio: number;
+  shiftTimeMs: number;
+
+  fanOnTemp: number;
+  fanOffTemp: number;
+  overtempWarning: number;
+  overtempEnrichPct: number;
+
+  mapSensorMaxKpa: number;
+  mapSensorMinKpa: number;
+  o2SensorType: 'narrowband' | 'wideband';
+  coolantSensorOffset: number;
+
+  compressionRatio: number;
+}
+
+export function getDefaultEcuConfig(): EcuConfig {
+  return {
+    redlineRpm: 8200,
+    fuelCutRpm: 8300,
+    revLimitType: 'fuel_cut',
+    softCutRpm: 8000,
+    softCutRetard: 10,
+    speedLimiterMph: 130,
+
+    vtecEngageRpm: 5500,
+    vtecDisengageRpm: 5200,
+    vtecOilPressureMin: 25,
+
+    injectorSizeCc: 240,
+    fuelPressurePsi: 43,
+    targetAfrIdle: 14.7,
+    targetAfrCruise: 14.7,
+    targetAfrWot: 12.2,
+    targetAfrVtec: 11.8,
+    crankingFuelPw: 15.0,
+    warmupEnrichPct: 15,
+    accelEnrichPct: 20,
+    decelFuelCutRpm: 1500,
+    closedLoopEnabled: true,
+    closedLoopAfrTarget: 14.7,
+
+    baseTimingDeg: 12,
+    maxAdvanceDeg: 40,
+    idleTimingDeg: 14,
+    knockRetardDeg: 5,
+    knockSensitivity: 5,
+    knockRecoveryRate: 1,
+
+    turboEnabled: false,
+    wastegateBaseDuty: 50,
+    boostTargetPsi: 8,
+    boostCutPsi: 15,
+    antiLagEnabled: false,
+    antiLagRetard: 20,
+    boostByGear: [8, 8, 8, 8, 8],
+
+    targetIdleRpm: 750,
+    idleIacvPosition: 30,
+    idleIgnitionTiming: 14,
+
+    launchControlEnabled: false,
+    launchControlRpm: 4500,
+    twoStepEnabled: false,
+    twoStepRpm: 5000,
+    launchRetardDeg: 15,
+    launchFuelCutPct: 30,
+    flatFootShiftEnabled: false,
+    flatFootShiftCutTime: 100,
+
+    tractionControlEnabled: false,
+    tractionSlipThreshold: 10,
+    tractionRetardDeg: 15,
+    tractionFuelCutPct: 20,
+    tractionControlMode: 'moderate',
+
+    gearRatios: [3.230, 2.105, 1.458, 1.107, 0.848],
+    finalDriveRatio: 4.400,
+    gearRevLimits: [8200, 8200, 8200, 8200, 8200],
+
+    vehicleMassLb: 2612,
+    tireDiameterIn: 23.5,
+    tireMassLb: 16,
+    dragCoefficient: 0.34,
+    frontalAreaM2: 1.94,
+    rollingResistanceCoeff: 0.012,
+    drivetrainLossPct: 15,
+
+    tireGripCoeff: 0.85,
+    wheelbaseM: 2.620,
+    cgHeightM: 0.48,
+    frontWeightBias: 0.61,
+    optimalSlipRatio: 0.10,
+    shiftTimeMs: 250,
+
+    fanOnTemp: 200,
+    fanOffTemp: 190,
+    overtempWarning: 230,
+    overtempEnrichPct: 10,
+
+    mapSensorMaxKpa: 105,
+    mapSensorMinKpa: 10,
+    o2SensorType: 'narrowband',
+    coolantSensorOffset: 0,
+
+    compressionRatio: 10.2,
+  };
+}
+
 export interface EngineState {
   rpm: number;
   throttlePosition: number;
@@ -64,6 +248,16 @@ export interface EngineState {
   catalystTemp: number;
   speedKmh: number;
   distanceMeters: number;
+
+  boostPsi: number;
+  fanStatus: boolean;
+  closedLoopStatus: string;
+  launchControlActive: boolean;
+  tractionControlActive: boolean;
+  knockRetardActive: number;
+  fuelCutActive: boolean;
+  revLimitActive: boolean;
+  turboEnabled: boolean;
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -107,7 +301,7 @@ function getValveLift(crankAngle: number, isIntake: boolean): number {
   }
 }
 
-function getCylinderPressure(crankAngle: number, throttle: number, rpm: number): number {
+function getCylinderPressure(crankAngle: number, throttle: number, rpm: number, compressionRatio: number): number {
   const normalized = ((crankAngle % 720) + 720) % 720;
   const loadFactor = 0.3 + throttle * 0.7;
 
@@ -116,7 +310,6 @@ function getCylinderPressure(crankAngle: number, throttle: number, rpm: number):
   }
   if (normalized < 360) {
     const progress = (normalized - 180) / 180;
-    const compressionRatio = COMPRESSION_RATIO;
     const pressure = 14.7 * Math.pow(compressionRatio, 1.3 * progress) * loadFactor;
     return pressure;
   }
@@ -132,46 +325,13 @@ function getCylinderPressure(crankAngle: number, throttle: number, rpm: number):
   return lerp(30, 16, progress);
 }
 
-const TIRE_DIAMETER_IN = 23.5;
-const TIRE_CIRCUMFERENCE_FT = (TIRE_DIAMETER_IN * Math.PI) / 12;
-const FINAL_DRIVE_RATIO = 4.400;
-const GEAR_RATIOS = [3.230, 2.105, 1.458, 1.107, 0.848];
-const TIRE_MASS_LB = 16;
-const TIRE_MASS_KG = TIRE_MASS_LB * 0.4536;
-const TIRE_RADIUS_M = TIRE_DIAMETER_IN * 0.0254 / 2;
-const TIRE_INERTIA = TIRE_MASS_KG * TIRE_RADIUS_M * TIRE_RADIUS_M;
-const TOTAL_TIRE_INERTIA = 4 * TIRE_INERTIA;
-const VEHICLE_MASS_LB = 2612;
-const VEHICLE_MASS_KG = VEHICLE_MASS_LB * 0.4536;
-const EFFECTIVE_MASS_KG = VEHICLE_MASS_KG + TOTAL_TIRE_INERTIA / (TIRE_RADIUS_M * TIRE_RADIUS_M);
-const DRAG_COEFF = 0.34;
-const FRONTAL_AREA_M2 = 1.94;
-const AIR_DENSITY = 1.225;
-const ROLLING_RESISTANCE = 0.012;
-const QUARTER_MILE_FT = 1320;
-const DRIVETRAIN_LOSS = 0.15;
-const REDLINE = 8200;
-const IDLE_RPM = 750;
-const VTEC_RPM = 5500;
-const COMPRESSION_RATIO = 10.2;
-
-const WHEELBASE_M = 2.620;
-const CG_HEIGHT_M = 0.48;
-const FRONT_WEIGHT_BIAS = 0.61;
-const TIRE_GRIP_COEFF = 0.85;
-const OPTIMAL_SLIP_RATIO = 0.10;
-const SHIFT_TIME_S = 0.25;
-const GRAVITY = 9.81;
-
-const N_TO_LBS = 0.2248;
-
-function tireGripFromSlip(slipRatio: number): number {
+function tireGripFromSlip(slipRatio: number, gripCoeff: number, optimalSlip: number): number {
   const absSlip = Math.abs(slipRatio);
-  if (absSlip <= OPTIMAL_SLIP_RATIO) {
-    return TIRE_GRIP_COEFF;
+  if (absSlip <= optimalSlip) {
+    return gripCoeff;
   }
-  const fadeoff = (absSlip - OPTIMAL_SLIP_RATIO) / 0.40;
-  return TIRE_GRIP_COEFF * Math.max(0.60, 1 - fadeoff * 0.35);
+  const fadeoff = (absSlip - optimalSlip) / 0.40;
+  return gripCoeff * Math.max(0.60, 1 - fadeoff * 0.35);
 }
 
 const B16A2_TORQUE_MAP: [number, number][] = [
@@ -201,10 +361,54 @@ function getGear(speedMph: number): number {
   return 4;
 }
 
-export function createEngineSimulation() {
+const QUARTER_MILE_FT = 1320;
+const AIR_DENSITY = 1.225;
+const GRAVITY = 9.81;
+const N_TO_LBS = 0.2248;
+
+interface DerivedConstants {
+  tireCircumferenceFt: number;
+  tireRadiusM: number;
+  tireMassKg: number;
+  tireInertia: number;
+  totalTireInertia: number;
+  vehicleMassKg: number;
+  effectiveMassKg: number;
+  shiftTimeS: number;
+  drivetrainLoss: number;
+}
+
+function computeDerived(config: EcuConfig): DerivedConstants {
+  const tireCircumferenceFt = (config.tireDiameterIn * Math.PI) / 12;
+  const tireRadiusM = config.tireDiameterIn * 0.0254 / 2;
+  const tireMassKg = config.tireMassLb * 0.4536;
+  const tireInertia = tireMassKg * tireRadiusM * tireRadiusM;
+  const totalTireInertia = 4 * tireInertia;
+  const vehicleMassKg = config.vehicleMassLb * 0.4536;
+  const effectiveMassKg = vehicleMassKg + totalTireInertia / (tireRadiusM * tireRadiusM);
+  const shiftTimeS = config.shiftTimeMs / 1000;
+  const drivetrainLoss = config.drivetrainLossPct / 100;
+
+  return {
+    tireCircumferenceFt,
+    tireRadiusM,
+    tireMassKg,
+    tireInertia,
+    totalTireInertia,
+    vehicleMassKg,
+    effectiveMassKg,
+    shiftTimeS,
+    drivetrainLoss,
+  };
+}
+
+export function createEngineSimulation(ecuConfig?: EcuConfig) {
+  let config: EcuConfig = ecuConfig ? { ...ecuConfig } : getDefaultEcuConfig();
+  let derived = computeDerived(config);
+
   let crankAngle = 0;
-  let currentRpm = IDLE_RPM;
-  let targetRpm = IDLE_RPM;
+  let currentRpm = config.targetIdleRpm;
+  let targetRpm = config.targetIdleRpm;
   let throttle = 0;
   let coolantTemp = 185;
   let oilTemp = 210;
@@ -231,9 +435,16 @@ export function createEngineSimulation() {
   let knockCount = 0;
   let catalystTemp = 400;
 
+  let vtecActive = false;
+  let fanOn = false;
+  let currentKnockRetard = 0;
+  let boostPsi = 0;
+  let prevThrottle = 0;
+
   function setThrottle(value: number) {
+    prevThrottle = throttle;
     throttle = clamp(value, 0, 1);
-    targetRpm = IDLE_RPM + throttle * (REDLINE - IDLE_RPM);
+    targetRpm = config.targetIdleRpm + throttle * (config.redlineRpm - config.targetIdleRpm);
   }
 
   function startQuarterMile() {
@@ -266,7 +477,8 @@ export function createEngineSimulation() {
     qmActive = false;
     prevSpeedMps = 0;
     throttle = 0;
-    targetRpm = IDLE_RPM;
+    prevThrottle = 0;
+    targetRpm = config.targetIdleRpm;
     currentGear = 0;
     shiftTimer = 0;
     wheelSpeedMps = 0;
@@ -282,22 +494,96 @@ export function createEngineSimulation() {
     knockCount = 0;
   }
 
+  function setEcuConfig(newConfig: EcuConfig) {
+    config = { ...newConfig };
+    derived = computeDerived(config);
+  }
+
+  function getEcuConfig(): EcuConfig {
+    return { ...config };
+  }
+
   function update(deltaMs: number): EngineState {
     const dt = deltaMs / 1000;
+
+    const idleRpm = config.targetIdleRpm;
+    const redline = config.redlineRpm;
+    const fuelCutRpm = config.fuelCutRpm;
+    const softCutRpm = config.softCutRpm;
 
     let wheelForceN = 0;
     let dragForceN = 0;
     let rollingForceN = 0;
     let netForceN = 0;
     let weightTransferN = 0;
-    let frontAxleLoadN = VEHICLE_MASS_KG * GRAVITY * FRONT_WEIGHT_BIAS;
-    let maxTractionForceN = frontAxleLoadN * TIRE_GRIP_COEFF;
+    let frontAxleLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
+    let maxTractionForceN = frontAxleLoadN * config.tireGripCoeff;
     let slipRatio = 0;
     let clutchStatus = "ENGAGED";
     let wheelTorqueFtLb = 0;
-    let gearRatio = GEAR_RATIOS[0];
-    let totalRatio = gearRatio * FINAL_DRIVE_RATIO;
+    let gearRatio = config.gearRatios[0];
+    let totalRatio = gearRatio * config.finalDriveRatio;
     let drivenRpm = 0;
+
+    let launchControlActive = false;
+    let tractionControlActive = false;
+    let fuelCutActive = false;
+    let revLimitActive = false;
+    let timingRetardTotal = 0;
+    let fuelCutFraction = 0;
+
+    if (currentKnockRetard > 0) {
+      currentKnockRetard = Math.max(0, currentKnockRetard - config.knockRecoveryRate * dt);
+    }
+
+    if (vtecActive) {
+      if (currentRpm < config.vtecDisengageRpm) {
+        vtecActive = false;
+      }
+    } else {
+      if (currentRpm >= config.vtecEngageRpm) {
+        vtecActive = true;
+      }
+    }
+
+    if (coolantTemp + config.coolantSensorOffset >= config.fanOnTemp) {
+      fanOn = true;
+    } else if (coolantTemp + config.coolantSensorOffset <= config.fanOffTemp) {
+      fanOn = false;
+    }
+
+    if (config.turboEnabled) {
+      const rpmFactor = clamp((currentRpm - 2000) / 4000, 0, 1);
+      const throttleFactor = throttle;
+      const gearTarget = config.boostByGear[clamp(currentGear, 0, config.boostByGear.length - 1)] || config.boostTargetPsi;
+      const targetBoost = Math.min(gearTarget, config.boostTargetPsi) * rpmFactor * throttleFactor;
+      boostPsi = lerp(boostPsi, targetBoost, dt * 3);
+      boostPsi = clamp(boostPsi, 0, config.boostCutPsi);
+
+      if (boostPsi >= config.boostCutPsi) {
+        fuelCutActive = true;
+        fuelCutFraction = 1.0;
+      }
+    } else {
+      boostPsi = 0;
+    }
+
+    const effectiveRevLimit = config.gearRevLimits[clamp(currentGear, 0, config.gearRevLimits.length - 1)] || redline;
+
+    if (currentRpm >= fuelCutRpm || currentRpm >= effectiveRevLimit) {
+      revLimitActive = true;
+      if (config.revLimitType === 'fuel_cut' || config.revLimitType === 'both') {
+        fuelCutActive = true;
+        fuelCutFraction = Math.max(fuelCutFraction, 1.0);
+      }
+      if (config.revLimitType === 'ignition_cut' || config.revLimitType === 'both') {
+        timingRetardTotal += config.softCutRetard * 2;
+      }
+    } else if (currentRpm >= softCutRpm) {
+      revLimitActive = true;
+      const softCutProg = (currentRpm - softCutRpm) / (fuelCutRpm - softCutRpm);
+      timingRetardTotal += config.softCutRetard * softCutProg;
+    }
 
     if (qmActive && qmET === null) {
       if (shiftTimer > 0) {
@@ -305,11 +591,20 @@ export function createEngineSimulation() {
         if (shiftTimer < 0) shiftTimer = 0;
       }
 
-      gearRatio = GEAR_RATIOS[currentGear];
-      totalRatio = gearRatio * FINAL_DRIVE_RATIO;
-      const wheelRadius = TIRE_RADIUS_M;
+      gearRatio = config.gearRatios[clamp(currentGear, 0, config.gearRatios.length - 1)];
+      totalRatio = gearRatio * config.finalDriveRatio;
+      const wheelRadius = derived.tireRadiusM;
 
       drivenRpm = (speedMps / wheelRadius) * (60 / (2 * Math.PI)) * totalRatio;
+
+      if (config.launchControlEnabled && currentGear === 0 && speedMps < 1.0) {
+        const lcRpm = config.launchControlRpm;
+        if (currentRpm > lcRpm) {
+          launchControlActive = true;
+          timingRetardTotal += config.launchRetardDeg;
+          fuelCutFraction = Math.max(fuelCutFraction, config.launchFuelCutPct / 100);
+        }
+      }
 
       const launchRpm = 1500 + throttle * 4500;
       const clutchSlipThreshold = 3000;
@@ -320,7 +615,12 @@ export function createEngineSimulation() {
       } else {
         effectiveRpm = drivenRpm;
       }
-      currentRpm = clamp(Math.max(effectiveRpm, IDLE_RPM), IDLE_RPM, REDLINE);
+
+      if (launchControlActive) {
+        effectiveRpm = Math.min(effectiveRpm, config.launchControlRpm);
+      }
+
+      currentRpm = clamp(Math.max(effectiveRpm, idleRpm), idleRpm, fuelCutRpm);
 
       if (shiftTimer > 0) {
         clutchStatus = "OPEN";
@@ -330,42 +630,74 @@ export function createEngineSimulation() {
         clutchStatus = "ENGAGED";
       }
 
-      if (currentRpm >= REDLINE && currentGear < GEAR_RATIOS.length - 1) {
+      const gearRedline = config.gearRevLimits[clamp(currentGear, 0, config.gearRevLimits.length - 1)] || redline;
+      if (currentRpm >= gearRedline && currentGear < config.gearRatios.length - 1) {
         currentGear++;
-        shiftTimer = SHIFT_TIME_S;
+        shiftTimer = derived.shiftTimeS;
       }
 
       if (shiftTimer <= 0) {
-        const torqueFtLb = getB16Torque(currentRpm, throttle);
+        let torqueFtLb = getB16Torque(currentRpm, throttle);
+
+        if (config.turboEnabled && boostPsi > 0) {
+          const boostMultiplier = 1 + (boostPsi / 14.7) * 0.9;
+          torqueFtLb *= boostMultiplier;
+        }
+
+        const timingFactor = Math.max(0.3, 1 - timingRetardTotal / 60);
+        torqueFtLb *= timingFactor;
+
+        const fuelFactor = 1 - fuelCutFraction;
+        torqueFtLb *= fuelFactor;
+
         const engineTorqueNm = torqueFtLb * 1.3558;
-        wheelForceN = (engineTorqueNm * totalRatio * (1 - DRIVETRAIN_LOSS)) / wheelRadius;
-        wheelTorqueFtLb = torqueFtLb * totalRatio * (1 - DRIVETRAIN_LOSS);
+        wheelForceN = (engineTorqueNm * totalRatio * (1 - derived.drivetrainLoss)) / wheelRadius;
+        wheelTorqueFtLb = torqueFtLb * totalRatio * (1 - derived.drivetrainLoss);
       }
 
       const prevAccelMps2 = dt > 0 && speedMps > 0.05 ? (speedMps - prevSpeedMps) / dt : 0;
-      weightTransferN = (VEHICLE_MASS_KG * Math.max(prevAccelMps2, 0) * CG_HEIGHT_M) / WHEELBASE_M;
-      const staticFrontLoadN = VEHICLE_MASS_KG * GRAVITY * FRONT_WEIGHT_BIAS;
-      frontAxleLoadN = Math.max(staticFrontLoadN - weightTransferN, VEHICLE_MASS_KG * GRAVITY * 0.35);
+      weightTransferN = (derived.vehicleMassKg * Math.max(prevAccelMps2, 0) * config.cgHeightM) / config.wheelbaseM;
+      const staticFrontLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
+      frontAxleLoadN = Math.max(staticFrontLoadN - weightTransferN, derived.vehicleMassKg * GRAVITY * 0.35);
 
-      maxTractionForceN = frontAxleLoadN * TIRE_GRIP_COEFF;
+      maxTractionForceN = frontAxleLoadN * config.tireGripCoeff;
 
       if (wheelForceN > maxTractionForceN) {
         wheelSpeedMps = currentRpm * 2 * Math.PI * wheelRadius / (totalRatio * 60);
         slipRatio = speedMps > 0.5
           ? (wheelSpeedMps - speedMps) / speedMps
           : 0.20;
-        const degradedGrip = tireGripFromSlip(slipRatio);
-        wheelForceN = frontAxleLoadN * degradedGrip;
+
+        if (config.tractionControlEnabled && Math.abs(slipRatio) * 100 > config.tractionSlipThreshold) {
+          tractionControlActive = true;
+          const modeMultiplier = config.tractionControlMode === 'mild' ? 0.5 : config.tractionControlMode === 'aggressive' ? 1.5 : 1.0;
+          timingRetardTotal += config.tractionRetardDeg * modeMultiplier;
+          fuelCutFraction = Math.max(fuelCutFraction, (config.tractionFuelCutPct / 100) * modeMultiplier);
+          fuelCutFraction = clamp(fuelCutFraction, 0, 1);
+
+          const tcTimingFactor = Math.max(0.3, 1 - config.tractionRetardDeg * modeMultiplier / 60);
+          const tcFuelFactor = 1 - clamp((config.tractionFuelCutPct / 100) * modeMultiplier, 0, 1);
+          wheelForceN *= tcTimingFactor * tcFuelFactor;
+        }
+
+        const degradedGrip = tireGripFromSlip(slipRatio, config.tireGripCoeff, config.optimalSlipRatio);
+        wheelForceN = Math.min(wheelForceN, frontAxleLoadN * degradedGrip);
       }
 
-      dragForceN = 0.5 * AIR_DENSITY * DRAG_COEFF * FRONTAL_AREA_M2 * speedMps * speedMps;
-      rollingForceN = ROLLING_RESISTANCE * VEHICLE_MASS_KG * GRAVITY;
+      dragForceN = 0.5 * AIR_DENSITY * config.dragCoefficient * config.frontalAreaM2 * speedMps * speedMps;
+      rollingForceN = config.rollingResistanceCoeff * derived.vehicleMassKg * GRAVITY;
 
       netForceN = wheelForceN - dragForceN - rollingForceN;
-      const accelMps2 = netForceN / EFFECTIVE_MASS_KG;
+      const accelMps2 = netForceN / derived.effectiveMassKg;
 
       prevSpeedMps = speedMps;
       speedMps = Math.max(speedMps + accelMps2 * dt, 0);
+
+      const speedLimitMps = config.speedLimiterMph / 2.237;
+      if (speedMps > speedLimitMps) {
+        speedMps = speedLimitMps;
+      }
+
       const avgSpeedMps = (prevSpeedMps + speedMps) / 2;
       distanceFt += avgSpeedMps * dt * 3.28084;
       qmElapsedTime += dt;
@@ -413,18 +745,26 @@ export function createEngineSimulation() {
         distanceFt = QUARTER_MILE_FT;
       }
     } else if (!qmActive) {
-      const rpmAccelRate = throttle > (currentRpm - IDLE_RPM) / (REDLINE - IDLE_RPM) ? 4000 : 5000;
+      const rpmAccelRate = throttle > (currentRpm - idleRpm) / (redline - idleRpm) ? 4000 : 5000;
       currentRpm = lerp(currentRpm, targetRpm, clamp(dt * rpmAccelRate / 5000, 0, 0.15));
-      currentRpm = clamp(currentRpm, IDLE_RPM - 50, REDLINE);
+      currentRpm = clamp(currentRpm, idleRpm - 50, redline);
+
+      if (currentRpm >= fuelCutRpm) {
+        revLimitActive = true;
+        if (config.revLimitType === 'fuel_cut' || config.revLimitType === 'both') {
+          fuelCutActive = true;
+        }
+        currentRpm = fuelCutRpm;
+      }
 
       tireTemp = lerp(tireTemp, 80, dt * 0.01);
       tireTemp = clamp(tireTemp, 80, 300);
 
       clutchStatus = "ENGAGED";
-      gearRatio = GEAR_RATIOS[0];
-      totalRatio = gearRatio * FINAL_DRIVE_RATIO;
-      frontAxleLoadN = VEHICLE_MASS_KG * GRAVITY * FRONT_WEIGHT_BIAS;
-      maxTractionForceN = frontAxleLoadN * TIRE_GRIP_COEFF;
+      gearRatio = config.gearRatios[0];
+      totalRatio = gearRatio * config.finalDriveRatio;
+      frontAxleLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
+      maxTractionForceN = frontAxleLoadN * config.tireGripCoeff;
     }
 
     const degreesPerSecond = currentRpm * 360 / 60;
@@ -432,51 +772,84 @@ export function createEngineSimulation() {
 
     const targetCoolant = 180 + (currentRpm / 6000) * 25 + throttle * 10;
     coolantTemp = lerp(coolantTemp, targetCoolant, dt * 0.05);
+    if (fanOn) {
+      coolantTemp = lerp(coolantTemp, coolantTemp - 5, dt * 0.1);
+    }
 
     const targetOil = 200 + (currentRpm / 6000) * 30 + throttle * 15;
     oilTemp = lerp(oilTemp, targetOil, dt * 0.03);
 
-    const cylinderPressure = getCylinderPressure(crankAngle, throttle, currentRpm);
+    const cylinderPressure = getCylinderPressure(crankAngle, throttle, currentRpm, config.compressionRatio);
     const intakeValveLift = getValveLift(crankAngle, true);
     const exhaustValveLift = getValveLift(crankAngle, false);
 
-    const torque = getB16Torque(currentRpm, throttle);
+    let torque = getB16Torque(currentRpm, throttle);
+    if (config.turboEnabled && boostPsi > 0) {
+      const boostMultiplier = 1 + (boostPsi / 14.7) * 0.9;
+      torque *= boostMultiplier;
+    }
     const hp = (torque * currentRpm) / 5252;
 
-    const baseMAP = 30 + throttle * 71;
-    const intakeManifoldPressure = clamp(baseMAP + Math.sin(crankAngle * Math.PI / 180) * 3, 20, 102);
+    let baseMAP = 30 + throttle * 71;
+    if (config.turboEnabled && boostPsi > 0) {
+      baseMAP += boostPsi * 6.895;
+    }
+    const intakeManifoldPressure = clamp(baseMAP + Math.sin(crankAngle * Math.PI / 180) * 3, 20, config.turboEnabled ? 250 : 102);
 
-    const rpmNorm = currentRpm / REDLINE;
+    const rpmNorm = currentRpm / redline;
     const baseEGT = 400 + throttle * 900 + rpmNorm * 350;
-    const exhaustGasTemp = baseEGT + Math.random() * 10 - 5;
+    let egtExtra = 0;
+    if (config.turboEnabled && config.antiLagEnabled && throttle < 0.2 && currentRpm > 3000) {
+      egtExtra = 200;
+    }
+    const exhaustGasTemp = baseEGT + egtExtra + Math.random() * 10 - 5;
 
-    const baseAFR = throttle > 0.8 ? 12.2 : throttle > 0.5 ? 13.2 : 14.7;
+    let baseAFR: number;
+    if (throttle < 0.05) {
+      baseAFR = config.targetAfrIdle;
+    } else if (throttle > 0.8) {
+      baseAFR = vtecActive ? config.targetAfrVtec : config.targetAfrWot;
+    } else if (throttle > 0.5) {
+      baseAFR = lerp(config.targetAfrCruise, config.targetAfrWot, (throttle - 0.5) / 0.3);
+    } else {
+      baseAFR = config.targetAfrCruise;
+    }
+
+    if (coolantTemp + config.coolantSensorOffset >= config.overtempWarning) {
+      baseAFR -= config.overtempEnrichPct / 100 * baseAFR * 0.1;
+    }
+
     const airFuelRatio = baseAFR + Math.random() * 0.3 - 0.15;
 
     const oilPressure = 14 + rpmNorm * 55 + throttle * 5;
-    const ignitionTiming = 12 + rpmNorm * 28 - throttle * 6;
+
+    let ignitionTiming = config.baseTimingDeg + rpmNorm * (config.maxAdvanceDeg - config.baseTimingDeg) - throttle * 6;
+    if (currentRpm < idleRpm + 100) {
+      ignitionTiming = config.idleTimingDeg;
+    }
+    ignitionTiming -= timingRetardTotal;
+    ignitionTiming -= currentKnockRetard;
     const sparkAdvance = ignitionTiming + 2;
 
     const fuelInjectionPulse = 1.8 + throttle * 9 + rpmNorm * 3.5;
-    const vtecActive = currentRpm >= VTEC_RPM;
     const volumetricEfficiency = vtecActive
       ? 88 + throttle * 12 - Math.abs(currentRpm - 7000) / 7000 * 10
       : 75 + throttle * 15 - Math.abs(currentRpm - 4000) / 4000 * 12;
     const fuelConsumption = (currentRpm * fuelInjectionPulse * 0.001) / 60;
 
     const speedMph = speedMps * 2.237;
-    const tireRpm = qmActive ? (speedMps / (TIRE_CIRCUMFERENCE_FT * 0.3048)) * 60 : 0;
+    const tireRpm = qmActive ? (speedMps / (derived.tireCircumferenceFt * 0.3048)) * 60 : 0;
 
     const accelG = dt > 0 ? (speedMps - prevSpeedMps) / (dt * 9.81) : 0;
 
     catalystTemp = lerp(catalystTemp, exhaustGasTemp * 0.85, dt * 0.02);
 
-    const engineLoad = clamp(throttle * 100 * (currentRpm / REDLINE) * 0.8 + 20, 0, 100);
-    const intakeAirTemp = 75 + (currentRpm / REDLINE) * 15 + throttle * 10 + Math.random() * 2 - 1;
+    const engineLoad = clamp(throttle * 100 * (currentRpm / redline) * 0.8 + 20, 0, 100);
+    const intakeAirTemp = 75 + (currentRpm / redline) * 15 + throttle * 10 + Math.random() * 2 - 1;
     const mapKPa = intakeManifoldPressure * 0.6895;
     const intakeVacuum = clamp((101.325 - mapKPa) * 0.2953, 0, 25);
-    const fuelPressure = 43 + (intakeManifoldPressure - 30) * 0.1;
-    const batteryVoltage = 14.2 - (currentRpm / REDLINE) * 0.3 - throttle * 0.1 + Math.random() * 0.05;
+    const fuelPressureVal = config.fuelPressurePsi + (intakeManifoldPressure - 30) * 0.1;
+    const batteryVoltage = 14.2 - (currentRpm / redline) * 0.3 - throttle * 0.1 + Math.random() * 0.05;
 
     let o2SensorVoltage: number;
     if (airFuelRatio < 14.7) {
@@ -485,9 +858,12 @@ export function createEngineSimulation() {
       o2SensorVoltage = 0.1 + Math.random() * 0.2;
     }
 
-    if (currentRpm > 6000 && throttle > 0.8 && Math.random() < 0.001) {
+    if (currentRpm > 6000 && throttle > 0.8 && Math.random() < (config.knockSensitivity / 10) * 0.002) {
       knockCount++;
+      currentKnockRetard += config.knockRetardDeg;
     }
+
+    const closedLoopStatus = (config.closedLoopEnabled && throttle < 0.7 && currentRpm < redline * 0.8) ? 'CLOSED' : 'OPEN';
 
     const speedKmh = speedMph * 1.60934;
     const distanceMeters = distanceFt * 0.3048;
@@ -496,9 +872,13 @@ export function createEngineSimulation() {
     const currentGearRatio = gearRatio;
     const driveshaftRpm = qmActive ? currentRpm / gearRatio : 0;
 
-    const rearAxleLoadN = VEHICLE_MASS_KG * GRAVITY - frontAxleLoadN;
+    const rearAxleLoadN = derived.vehicleMassKg * GRAVITY - frontAxleLoadN;
 
     const tireSlipPercent = qmActive ? Math.abs(slipRatio) * 100 : 0;
+
+    if (fuelCutFraction > 0) {
+      fuelCutActive = true;
+    }
 
     return {
       rpm: Math.round(currentRpm),
@@ -559,15 +939,25 @@ export function createEngineSimulation() {
       engineLoad: Math.round(engineLoad * 10) / 10,
       intakeAirTemp: Math.round(intakeAirTemp * 10) / 10,
       intakeVacuum: Math.round(intakeVacuum * 10) / 10,
-      fuelPressure: Math.round(fuelPressure * 10) / 10,
+      fuelPressure: Math.round(fuelPressureVal * 10) / 10,
       batteryVoltage: Math.round(batteryVoltage * 100) / 100,
       o2SensorVoltage: Math.round(o2SensorVoltage * 100) / 100,
       knockCount,
       catalystTemp: Math.round(catalystTemp),
       speedKmh: Math.round(speedKmh * 10) / 10,
       distanceMeters: Math.round(distanceMeters * 10) / 10,
+
+      boostPsi: Math.round(boostPsi * 10) / 10,
+      fanStatus: fanOn,
+      closedLoopStatus,
+      launchControlActive,
+      tractionControlActive,
+      knockRetardActive: Math.round(currentKnockRetard * 10) / 10,
+      fuelCutActive,
+      revLimitActive,
+      turboEnabled: config.turboEnabled,
     };
   }
 
-  return { update, setThrottle, startQuarterMile, resetQuarterMile, isRunning: () => running };
+  return { update, setThrottle, startQuarterMile, resetQuarterMile, isRunning: () => running, setEcuConfig, getEcuConfig };
 }

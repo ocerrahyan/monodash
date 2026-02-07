@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { createEngineSimulation, type EngineState } from "@/lib/engineSim";
+import { Link } from "wouter";
+import { type EngineState } from "@/lib/engineSim";
+import { sharedSim } from "@/lib/sharedSim";
 import { Button } from "@/components/ui/button";
 
 interface GaugeProps {
@@ -35,7 +37,7 @@ function fmt(v: number | null, fallback: string = "---"): string {
 }
 
 export default function Dashboard() {
-  const simRef = useRef(createEngineSimulation());
+  const simRef = useRef(sharedSim);
   const [state, setState] = useState<EngineState | null>(null);
   const [throttle, setThrottle] = useState(0);
   const lastTimeRef = useRef(performance.now());
@@ -77,8 +79,11 @@ export default function Dashboard() {
   return (
     <div className="fixed inset-0 bg-black text-white flex flex-col select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
       <div className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="gauge-scroll-area">
-        <div className="text-center pt-2 pb-1">
-          <div className="text-[10px] tracking-[0.3em] uppercase opacity-30">B16A2 DOHC VTEC</div>
+        <div className="flex items-center justify-between px-3 pt-2 pb-1">
+          <span className="text-[10px] tracking-[0.3em] uppercase opacity-30 font-mono">B16A2 DOHC VTEC</span>
+          <Link href="/ecu" className="text-[10px] tracking-wider uppercase opacity-40 font-mono border border-white/15 px-2 py-0.5" data-testid="link-ecu">
+            ECU TUNE
+          </Link>
         </div>
 
         <div className="grid grid-cols-4 gap-0" data-testid="gauge-grid">
@@ -156,6 +161,16 @@ export default function Dashboard() {
           <Gauge label="330 ft" value={fmt(state.threeThirtyTime)} unit="sec" testId="gauge-330ft" />
           <Gauge label="1/8 Mile" value={fmt(state.eighthMileTime)} unit="sec" testId="gauge-eighth" />
           <Gauge label="1000 ft" value={fmt(state.thousandFootTime)} unit="sec" testId="gauge-1000ft" />
+
+          <SectionHeader title="ECU Status" />
+          <Gauge label="Boost" value={state.boostPsi} unit="psi" testId="gauge-boost" highlight={state.turboEnabled} />
+          <Gauge label="Fan" value={state.fanStatus ? "ON" : "OFF"} unit="status" testId="gauge-fan" />
+          <Gauge label="Fuel Map" value={state.closedLoopStatus} unit="loop" testId="gauge-cl-status" />
+          <Gauge label="Launch" value={state.launchControlActive ? "ON" : "OFF"} unit="ctrl" testId="gauge-launch-ctrl" />
+          <Gauge label="Trac Ctrl" value={state.tractionControlActive ? "ON" : "OFF"} unit="status" testId="gauge-tc-status" />
+          <Gauge label="Knock Ret" value={state.knockRetardActive} unit="deg" testId="gauge-knock-ret" />
+          <Gauge label="Fuel Cut" value={state.fuelCutActive ? "YES" : "NO"} unit="status" testId="gauge-fuel-cut" />
+          <Gauge label="Rev Limit" value={state.revLimitActive ? "YES" : "NO"} unit="status" testId="gauge-rev-limit" />
 
           <SectionHeader title="Peak Performance" />
           <Gauge label="Peak G" value={state.peakAccelG} unit="g" testId="gauge-peak-g" />
