@@ -270,6 +270,10 @@ export interface EngineState {
   trapSpeed: number | null;
   peakAccelG: number;
   peakWheelHp: number;
+  peakRpm: number;
+  peakBoostPsi: number;
+  peakSpeedMph: number;
+  peakSlipPercent: number;
 
   dragForce: number;
   rollingResistance: number;
@@ -511,6 +515,10 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
   let trapSpeed: number | null = null;
   let peakAccelG = 0;
   let peakWheelHp = 0;
+  let peakRpm = 0;
+  let peakBoostPsi = 0;
+  let peakSpeedMph = 0;
+  let peakSlipPercent = 0;
   let knockCount = 0;
   let catalystTemp = 400;
 
@@ -545,6 +553,10 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     trapSpeed = null;
     peakAccelG = 0;
     peakWheelHp = 0;
+    peakRpm = 0;
+    peakBoostPsi = 0;
+    peakSpeedMph = 0;
+    peakSlipPercent = 0;
     knockCount = 0;
   }
 
@@ -570,6 +582,10 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     trapSpeed = null;
     peakAccelG = 0;
     peakWheelHp = 0;
+    peakRpm = 0;
+    peakBoostPsi = 0;
+    peakSpeedMph = 0;
+    peakSlipPercent = 0;
     knockCount = 0;
   }
 
@@ -771,10 +787,8 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       maxTractionForceN = frontAxleLoadN * config.tireGripCoeff;
 
       if (wheelForceN > maxTractionForceN) {
-        wheelSpeedMps = currentRpm * 2 * Math.PI * wheelRadius / (totalRatio * 60);
-        slipRatio = speedMps > 0.5
-          ? (wheelSpeedMps - speedMps) / speedMps
-          : 0.20;
+        const excessForceRatio = (wheelForceN - maxTractionForceN) / maxTractionForceN;
+        slipRatio = clamp(excessForceRatio * 0.5, 0.03, 2.0);
 
         if (config.tractionControlEnabled && Math.abs(slipRatio) * 100 > config.tractionSlipThreshold) {
           tractionControlActive = true;
@@ -786,10 +800,14 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
           const tcTimingFactor = Math.max(0.3, 1 - config.tractionRetardDeg * modeMultiplier / 60);
           const tcFuelFactor = 1 - clamp((config.tractionFuelCutPct / 100) * modeMultiplier, 0, 1);
           wheelForceN *= tcTimingFactor * tcFuelFactor;
+
+          const reducedExcess = (wheelForceN - maxTractionForceN) / maxTractionForceN;
+          slipRatio = reducedExcess > 0 ? clamp(reducedExcess * 0.5, 0, 2.0) : 0;
         }
 
         const degradedGrip = tireGripFromSlip(slipRatio, config.tireGripCoeff, config.optimalSlipRatio);
         wheelForceN = Math.min(wheelForceN, frontAxleLoadN * degradedGrip);
+        wheelSpeedMps = speedMps * (1 + slipRatio);
       }
 
       dragForceN = 0.5 * AIR_DENSITY * config.dragCoefficient * config.frontalAreaM2 * speedMps * speedMps;
@@ -838,6 +856,13 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
 
       const currentWheelHp = (wheelForceN * speedMps) / 745.7;
       if (currentWheelHp > peakWheelHp) peakWheelHp = currentWheelHp;
+
+      if (currentRpm > peakRpm) peakRpm = currentRpm;
+      if (boostPsi > peakBoostPsi) peakBoostPsi = boostPsi;
+      const currentSpeedMphPeak = speedMps * 2.237;
+      if (currentSpeedMphPeak > peakSpeedMph) peakSpeedMph = currentSpeedMphPeak;
+      const currentSlipPct = Math.abs(slipRatio) * 100;
+      if (currentSlipPct > peakSlipPercent) peakSlipPercent = currentSlipPct;
 
       const slipHeat = Math.abs(slipRatio) * dt * 200;
       const forceHeat = (wheelForceN * N_TO_LBS / 5000) * dt * 5;
@@ -1115,6 +1140,10 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       trapSpeed: trapSpeed !== null ? Math.round(trapSpeed * 10) / 10 : null,
       peakAccelG: Math.round(peakAccelG * 100) / 100,
       peakWheelHp: Math.round(peakWheelHp * 10) / 10,
+      peakRpm: Math.round(peakRpm),
+      peakBoostPsi: Math.round(peakBoostPsi * 10) / 10,
+      peakSpeedMph: Math.round(peakSpeedMph * 10) / 10,
+      peakSlipPercent: Math.round(peakSlipPercent * 10) / 10,
 
       dragForce: qmActive ? Math.round(dragForceN * N_TO_LBS * 10) / 10 : 0,
       rollingResistance: Math.round(rollingForceN * N_TO_LBS * 10) / 10,

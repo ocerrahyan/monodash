@@ -466,6 +466,28 @@ export class EngineSound {
     };
   }
 
+  private fadeToken = 0;
+
+  fadeOut(durationMs: number = 500): void {
+    if (!this.ctx || !this.masterGain) return;
+    const token = ++this.fadeToken;
+    const now = this.ctx.currentTime;
+    this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+    this.masterGain.gain.linearRampToValueAtTime(0, now + durationMs / 1000);
+    setTimeout(() => {
+      if (this.fadeToken === token) {
+        this.enabled = false;
+      }
+    }, durationMs);
+  }
+
+  cancelFade(): void {
+    this.fadeToken++;
+    if (this.ctx && this.masterGain) {
+      this.masterGain.gain.cancelScheduledValues(this.ctx.currentTime);
+    }
+  }
+
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     if (!enabled && this.masterGain) {

@@ -154,6 +154,10 @@ Peak G, Peak Wheel HP
 - "DEFAULTS" button on ECU page resets all parameters to stock B16A2 values
 
 ## Recent Changes
+- 2026-02-07: Added quarter-mile results overlay with all key stats (ET, trap, splits, peak RPM/WHP/G/boost/speed/slip) and NEW RUN button
+- 2026-02-07: Engine sound fades out smoothly when quarter-mile finishes (no more hanging sound)
+- 2026-02-07: Fixed tire slip to persist through 2nd+ gears during quarter-mile runs (force-based calculation replaces circular speed-based method)
+- 2026-02-07: Added peak tracking during QM runs (peakRpm, peakBoostPsi, peakSpeedMph, peakSlipPercent)
 - 2026-02-07: Added turbo sound synthesis (spool, whistle, blow-off valve) and tire chirp/squeal sounds to engine audio
 - 2026-02-07: Tire slip now calculated in all modes (not just quarter-mile) — high-power builds produce wheelspin in 1st gear
 - 2026-02-07: Non-QM mode now computes wheel force vs traction with traction control intervention

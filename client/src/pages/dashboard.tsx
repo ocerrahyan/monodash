@@ -37,6 +37,26 @@ function fmt(v: number | null, fallback: string = "---"): string {
   return v !== null ? String(v) : fallback;
 }
 
+interface ResultRowProps {
+  label: string;
+  value: string | number | null;
+  unit: string;
+  testId: string;
+  large?: boolean;
+}
+
+function ResultRow({ label, value, unit, testId, large }: ResultRowProps) {
+  return (
+    <div className="flex items-baseline justify-between py-0.5" data-testid={testId}>
+      <span className="text-[10px] tracking-wider uppercase opacity-70 font-mono">{label}</span>
+      <div className="flex items-baseline gap-1">
+        <span className={`${large ? "text-[22px]" : "text-[16px]"} font-mono font-bold tabular-nums`}>{value ?? "---"}</span>
+        <span className="text-[9px] tracking-wide uppercase opacity-60 font-mono">{unit}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const simRef = useRef(sharedSim);
   const soundRef = useRef<EngineSound | null>(null);
@@ -45,6 +65,9 @@ export default function Dashboard() {
   const [soundOn, setSoundOn] = useState(false);
   const lastTimeRef = useRef(performance.now());
   const rafRef = useRef<number>(0);
+  const soundFadedRef = useRef(false);
+  const finishStateRef = useRef<EngineState | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     soundRef.current = new EngineSound();
@@ -56,6 +79,18 @@ export default function Dashboard() {
     const delta = now - lastTimeRef.current;
     lastTimeRef.current = now;
     const newState = simRef.current.update(delta);
+
+    if (newState.quarterMileET !== null && newState.quarterMileActive) {
+      if (!soundFadedRef.current) {
+        soundFadedRef.current = true;
+        soundRef.current?.fadeOut(800);
+      }
+      if (!finishStateRef.current) {
+        finishStateRef.current = { ...newState };
+        setTimeout(() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 50);
+      }
+    }
+
     setState(newState);
     if (soundRef.current && soundRef.current.isEnabled()) {
       const config = simRef.current.getEcuConfig();
@@ -100,18 +135,27 @@ export default function Dashboard() {
     if (state?.quarterMileActive) {
       simRef.current.resetQuarterMile();
       setThrottle(0);
+      soundFadedRef.current = false;
+      finishStateRef.current = null;
+      if (soundRef.current) {
+        soundRef.current.cancelFade();
+        if (soundOn) {
+          soundRef.current.setEnabled(true);
+        }
+      }
     } else {
       simRef.current.startQuarterMile();
     }
-  }, [state?.quarterMileActive]);
+  }, [state?.quarterMileActive, soundOn]);
 
   if (!state) return null;
 
   const qmFinished = state.quarterMileET !== null;
+  const fs = finishStateRef.current;
 
   return (
     <div className="fixed inset-0 bg-black text-white flex flex-col select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
-      <div className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="gauge-scroll-area">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="gauge-scroll-area">
         <div className="flex items-center justify-between px-3 pt-2 pb-1 gap-2">
           <span className="text-[10px] tracking-[0.3em] uppercase opacity-60 font-mono">B16A2 DOHC VTEC</span>
           <div className="flex items-center gap-2">
@@ -127,6 +171,39 @@ export default function Dashboard() {
             </Link>
           </div>
         </div>
+
+        {qmFinished && fs && (
+          <div className="mx-3 mb-2 border border-white/30 p-3" data-testid="results-overlay">
+            <div className="text-center mb-3">
+              <span className="text-[10px] tracking-[0.4em] uppercase opacity-60 font-mono">QUARTER MILE RESULTS</span>
+            </div>
+            <ResultRow label="1/4 Mile ET" value={fs.quarterMileET} unit="sec" testId="result-et" large />
+            <ResultRow label="Trap Speed" value={fs.trapSpeed} unit="mph" testId="result-trap" large />
+            <div className="h-px bg-white/15 my-2" />
+            <ResultRow label="60 ft" value={fs.sixtyFootTime} unit="sec" testId="result-60ft" />
+            <ResultRow label="330 ft" value={fs.threeThirtyTime} unit="sec" testId="result-330ft" />
+            <ResultRow label="1/8 Mile" value={fs.eighthMileTime} unit="sec" testId="result-eighth" />
+            <ResultRow label="1000 ft" value={fs.thousandFootTime} unit="sec" testId="result-1000ft" />
+            <div className="h-px bg-white/15 my-2" />
+            <ResultRow label="Peak RPM" value={fs.peakRpm} unit="rpm" testId="result-rpm" />
+            <ResultRow label="Peak WHP" value={fs.peakWheelHp} unit="hp" testId="result-whp" />
+            <ResultRow label="Peak G" value={fs.peakAccelG} unit="g" testId="result-g" />
+            <ResultRow label="Peak Boost" value={fs.peakBoostPsi} unit="psi" testId="result-boost" />
+            <ResultRow label="Top Speed" value={fs.peakSpeedMph} unit="mph" testId="result-speed" />
+            <ResultRow label="Final Gear" value={fs.currentGearDisplay} unit="" testId="result-gear" />
+            <ResultRow label="Peak Slip" value={fs.peakSlipPercent} unit="%" testId="result-slip" />
+            <div className="mt-3">
+              <Button
+                onClick={handleLaunch}
+                variant="outline"
+                className="w-full text-[11px] tracking-[0.2em] uppercase font-mono bg-transparent text-white/90 border-white/30"
+                data-testid="button-new-run"
+              >
+                NEW RUN
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-4 gap-0" data-testid="gauge-grid">
 
@@ -249,7 +326,7 @@ export default function Dashboard() {
           className="w-full mt-2 text-[11px] tracking-[0.2em] uppercase font-mono bg-transparent text-white/90 border-white/30"
           data-testid="button-launch"
         >
-          {state.quarterMileActive ? (qmFinished ? `FINISHED ${state.quarterMileET}s — TAP TO RESET` : "RUNNING — TAP TO RESET") : "LAUNCH 1/4 MILE"}
+          {state.quarterMileActive ? (qmFinished ? "NEW RUN" : "RUNNING — TAP TO RESET") : "LAUNCH 1/4 MILE"}
         </Button>
       </div>
     </div>
