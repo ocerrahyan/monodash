@@ -198,6 +198,7 @@ function getStringOptions(key: ConfigKey): string[] {
     case "tractionControlMode": return ["mild", "moderate", "aggressive"];
     case "o2SensorType": return ["narrowband", "wideband"];
     case "superchargerType": return ["centrifugal", "roots", "twinscrew"];
+    case "tireCompound": return ["street", "sport", "semi_slick", "full_slick", "drag_slick"];
     default: return [];
   }
 }
@@ -475,9 +476,16 @@ export default function EcuPage() {
         <ParamRow label="Final Drive" configKey="finalDriveRatio" config={config} onChange={handleChange} unit="ratio" step={0.05} min={2} max={7} testId="ecu-final-drive" />
         <ArrayParamRow label="Per-Gear Rev Limits" configKey="gearRevLimits" config={config} onChange={handleChange} unit="rpm" step={100} labels={["1st", "2nd", "3rd", "4th", "5th"]} testId="ecu-gear-rev-limits" />
 
+        <SectionHeader title="Tire Setup" />
+        <ParamRow label="Tire Width" configKey="tireWidthMm" config={config} onChange={handleChange} unit="mm" step={5} min={135} max={345} testId="ecu-tire-width" />
+        <ParamRow label="Aspect Ratio" configKey="tireAspectRatio" config={config} onChange={handleChange} unit="%" step={5} min={25} max={80} testId="ecu-tire-aspect" />
+        <ParamRow label="Wheel Dia" configKey="tireWheelDiameterIn" config={config} onChange={handleChange} unit="in" step={1} min={13} max={22} testId="ecu-wheel-dia" />
+        <ParamRow label="Compound" configKey="tireCompound" config={config} onChange={handleChange} testId="ecu-tire-compound" />
+        <ParamRow label="Grip %" configKey="tireGripPct" config={config} onChange={handleChange} unit="%" step={5} min={50} max={150} testId="ecu-tire-grip-pct" />
+        <ParamRow label="Temp Sensitivity" configKey="tireTempSensitivity" config={config} onChange={handleChange} unit="x" step={0.1} min={0} max={3} testId="ecu-tire-temp-sens" />
+
         <SectionHeader title="Vehicle" />
         <ParamRow label="Vehicle Mass" configKey="vehicleMassLb" config={config} onChange={handleChange} unit="lbs" step={10} min={1500} max={5000} testId="ecu-mass" />
-        <ParamRow label="Tire Diameter" configKey="tireDiameterIn" config={config} onChange={handleChange} unit="in" step={0.5} min={13} max={35} testId="ecu-tire-dia" />
         <ParamRow label="Tire Mass" configKey="tireMassLb" config={config} onChange={handleChange} unit="lbs" step={1} min={8} max={40} testId="ecu-tire-mass" />
         <ParamRow label="Drag Coeff" configKey="dragCoefficient" config={config} onChange={handleChange} unit="cd" step={0.01} min={0.1} max={0.8} testId="ecu-drag-coeff" />
         <ParamRow label="Frontal Area" configKey="frontalAreaM2" config={config} onChange={handleChange} unit="m2" step={0.05} min={1} max={4} testId="ecu-frontal-area" />

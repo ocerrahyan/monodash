@@ -93,8 +93,17 @@ TC toggle, Slip Threshold, TC Retard, TC Fuel Cut %, TC Mode (mild/moderate/aggr
 ### Gear Ratios
 Per-gear ratios (5-speed), Final Drive Ratio, Per-gear Rev Limits
 
+### Tire Setup
+Tire Width (mm), Aspect Ratio (%), Wheel Diameter (in), Compound (street/sport/semi_slick/full_slick/drag_slick), Grip % (50-150%), Temp Sensitivity (0-3x)
+- 5 tire compounds with unique grip curves, optimal temperature ranges, heat/cool rates
+- Temperature-dependent grip: cold tires lose grip, overheated tires degrade
+- Contact patch area calculated from tire dimensions and axle load
+- Wider tires = more contact patch = more grip; compound determines base grip level
+- Drag slicks: highest grip (1.50) but need 220-320°F to work; terrible when cold
+- Street tires: lowest grip (0.85) but work well 140-200°F; best cold grip
+
 ### Vehicle
-Mass, Tire Diameter, Tire Mass, Drag Coefficient, Frontal Area, Rolling Resistance, Drivetrain Loss %
+Mass, Tire Mass, Drag Coefficient, Frontal Area, Rolling Resistance, Drivetrain Loss %
 
 ### Traction Physics
 Tire Grip Coefficient, Wheelbase, CG Height, Front Weight Bias, Optimal Slip Ratio, Shift Time
@@ -125,8 +134,8 @@ Coolant Temp, Oil Temp, Oil Pressure, Battery Voltage
 ### Drivetrain (6 gauges)
 Current Gear, Driveshaft RPM, Clutch Status, Wheel Torque, Wheel Force, Knock Count
 
-### Traction (6 gauges)
-Front Axle Load, Rear Axle Load, Weight Transfer, Tire Slip %, Traction Limit, Tire Temp
+### Traction (7 gauges)
+Front Axle Load, Rear Axle Load, Weight Transfer, Tire Slip %, Traction Limit, Tire Temp, Contact Patch
 
 ### Forces (4 gauges)
 Drag Force, Rolling Resistance, Net Force, Acceleration G
@@ -168,6 +177,10 @@ Peak G, Peak Wheel HP
 - "DEFAULTS" button on ECU page resets all parameters to stock B16A2 values
 
 ## Recent Changes
+- 2026-02-07: Added comprehensive tire setup system — 5 compounds (street/sport/semi-slick/full-slick/drag-slick) with temperature-dependent grip, contact patch from dimensions, compound-aware heating/cooling rates
+- 2026-02-07: Added Tire Setup section to ECU page (width, aspect ratio, wheel dia, compound, grip %, temp sensitivity)
+- 2026-02-07: Updated all built-in presets with appropriate tire configs (Drag Build=drag slicks, All-Motor=semi-slicks, etc.)
+- 2026-02-07: Dashboard now shows contact patch area gauge and tire temperature optimal indicator
 - 2026-02-07: Added live player count (shows how many tuners are using the app worldwide via heartbeat API)
 - 2026-02-07: Added ECU preset system — 6 built-in presets (Stock, Street Turbo, Drag Build, All-Motor, Supercharged, NOS Street, Max Attack) + save/load custom presets
 - 2026-02-07: Fixed sound hanging after QM finish — fading flag prevents update() from overriding fade ramp

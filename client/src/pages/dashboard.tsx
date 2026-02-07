@@ -360,7 +360,8 @@ export default function Dashboard() {
           <Gauge label="Wt Trans" value={state.weightTransfer} unit="lbs" testId="gauge-wt-trans" />
           <Gauge label="Tire Slip" value={state.tireSlipPercent} unit="%" testId="gauge-tire-slip" />
           <Gauge label="Trac Lmt" value={state.tractionLimit} unit="lbs" testId="gauge-trac-lmt" />
-          <Gauge label="Tire Temp" value={state.tireTemp} unit="°F" testId="gauge-tire-temp" />
+          <Gauge label="Tire Temp" value={state.tireTemp} unit={state.tireTempOptimal ? "°F OK" : "°F"} testId="gauge-tire-temp" />
+          <Gauge label="Patch" value={state.contactPatchArea} unit="in²" testId="gauge-contact-patch" />
 
           <SectionHeader title="Forces" />
           <Gauge label="Drag" value={state.dragForce} unit="lbs" testId="gauge-drag-force" />

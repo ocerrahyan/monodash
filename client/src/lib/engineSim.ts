@@ -70,6 +70,12 @@ export interface EcuConfig {
   drivetrainLossPct: number;
 
   tireGripCoeff: number;
+  tireWidthMm: number;
+  tireAspectRatio: number;
+  tireWheelDiameterIn: number;
+  tireCompound: 'street' | 'sport' | 'semi_slick' | 'full_slick' | 'drag_slick';
+  tireGripPct: number;
+  tireTempSensitivity: number;
   wheelbaseM: number;
   cgHeightM: number;
   frontWeightBias: number;
@@ -173,7 +179,7 @@ export function getDefaultEcuConfig(): EcuConfig {
     gearRevLimits: [8200, 8200, 8200, 8200, 8200],
 
     vehicleMassLb: 2612,
-    tireDiameterIn: 23.5,
+    tireDiameterIn: (185 * 0.65 * 2 / 25.4) + 14,
     tireMassLb: 16,
     dragCoefficient: 0.34,
     frontalAreaM2: 1.94,
@@ -181,6 +187,12 @@ export function getDefaultEcuConfig(): EcuConfig {
     drivetrainLossPct: 15,
 
     tireGripCoeff: 0.85,
+    tireWidthMm: 185,
+    tireAspectRatio: 65,
+    tireWheelDiameterIn: 14,
+    tireCompound: 'street',
+    tireGripPct: 100,
+    tireTempSensitivity: 1.0,
     wheelbaseM: 2.620,
     cgHeightM: 0.48,
     frontWeightBias: 0.61,
@@ -262,6 +274,8 @@ export interface EngineState {
   tireSlipPercent: number;
   tractionLimit: number;
   tireTemp: number;
+  contactPatchArea: number;
+  tireTempOptimal: boolean;
 
   sixtyFootTime: number | null;
   threeThirtyTime: number | null;
@@ -378,6 +392,50 @@ function tireGripFromSlip(slipRatio: number, gripCoeff: number, optimalSlip: num
   return gripCoeff * Math.max(0.78, 1 - fadeoff * 0.20);
 }
 
+interface TireCompoundData {
+  baseGrip: number;
+  optimalTempLow: number;
+  optimalTempHigh: number;
+  coldGripFactor: number;
+  hotGripFactor: number;
+  heatRate: number;
+  coolRate: number;
+}
+
+const TIRE_COMPOUNDS: Record<string, TireCompoundData> = {
+  street: { baseGrip: 0.85, optimalTempLow: 140, optimalTempHigh: 200, coldGripFactor: 0.90, hotGripFactor: 0.70, heatRate: 1.0, coolRate: 1.0 },
+  sport: { baseGrip: 0.95, optimalTempLow: 160, optimalTempHigh: 220, coldGripFactor: 0.85, hotGripFactor: 0.65, heatRate: 1.2, coolRate: 0.9 },
+  semi_slick: { baseGrip: 1.10, optimalTempLow: 180, optimalTempHigh: 250, coldGripFactor: 0.70, hotGripFactor: 0.60, heatRate: 1.5, coolRate: 0.8 },
+  full_slick: { baseGrip: 1.30, optimalTempLow: 200, optimalTempHigh: 280, coldGripFactor: 0.50, hotGripFactor: 0.55, heatRate: 2.0, coolRate: 0.7 },
+  drag_slick: { baseGrip: 1.50, optimalTempLow: 220, optimalTempHigh: 320, coldGripFactor: 0.35, hotGripFactor: 0.50, heatRate: 2.5, coolRate: 0.6 },
+};
+
+function getTireGripAtTemp(compound: TireCompoundData, temp: number, gripPct: number, sensitivity: number): number {
+  const userGripMult = gripPct / 100;
+
+  if (temp >= compound.optimalTempLow && temp <= compound.optimalTempHigh) {
+    return compound.baseGrip * userGripMult;
+  }
+
+  if (temp < compound.optimalTempLow) {
+    const coldDelta = (compound.optimalTempLow - temp) / compound.optimalTempLow;
+    const coldPenalty = coldDelta * (1 - compound.coldGripFactor) * sensitivity;
+    return compound.baseGrip * userGripMult * Math.max(compound.coldGripFactor, 1 - coldPenalty);
+  }
+
+  const hotDelta = (temp - compound.optimalTempHigh) / 100;
+  const hotPenalty = hotDelta * (1 - compound.hotGripFactor) * sensitivity;
+  return compound.baseGrip * userGripMult * Math.max(compound.hotGripFactor, 1 - hotPenalty);
+}
+
+function getContactPatchArea(widthMm: number, aspectRatio: number, loadN: number): number {
+  const sectionWidthIn = widthMm / 25.4;
+  const sideWallHeight = widthMm * (aspectRatio / 100);
+  const deflectionFactor = clamp(loadN / 8000, 0.5, 1.5);
+  const patchLengthIn = 3.0 + deflectionFactor * 2.5;
+  return sectionWidthIn * patchLengthIn * deflectionFactor * 0.7;
+}
+
 const B16A2_TORQUE_MAP: [number, number][] = [
   [750, 40], [1000, 50], [1500, 58], [2000, 67], [2500, 75],
   [3000, 82], [3500, 88], [4000, 93], [4500, 96], [5000, 99],
@@ -459,6 +517,7 @@ interface DerivedConstants {
   effectiveMassKg: number;
   shiftTimeS: number;
   drivetrainLoss: number;
+  contactPatchArea: number;
 }
 
 function computeDerived(config: EcuConfig): DerivedConstants {
@@ -472,6 +531,8 @@ function computeDerived(config: EcuConfig): DerivedConstants {
   const shiftTimeS = config.shiftTimeMs / 1000;
   const drivetrainLoss = config.drivetrainLossPct / 100;
 
+  const contactPatchArea = getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, vehicleMassKg * 9.81 * config.frontWeightBias);
+
   return {
     tireCircumferenceFt,
     tireRadiusM,
@@ -482,6 +543,7 @@ function computeDerived(config: EcuConfig): DerivedConstants {
     effectiveMassKg,
     shiftTimeS,
     drivetrainLoss,
+    contactPatchArea,
   };
 }
 
@@ -592,6 +654,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
 
   function setEcuConfig(newConfig: EcuConfig) {
     config = { ...newConfig };
+    config.tireDiameterIn = (config.tireWidthMm * (config.tireAspectRatio / 100) * 2 / 25.4) + config.tireWheelDiameterIn;
     derived = computeDerived(config);
   }
 
@@ -607,13 +670,19 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     const fuelCutRpm = config.fuelCutRpm;
     const softCutRpm = config.softCutRpm;
 
+    const compound = TIRE_COMPOUNDS[config.tireCompound] || TIRE_COMPOUNDS.street;
+
     let wheelForceN = 0;
     let dragForceN = 0;
     let rollingForceN = 0;
     let netForceN = 0;
     let weightTransferN = 0;
     let frontAxleLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
-    let maxTractionForceN = frontAxleLoadN * config.tireGripCoeff;
+    let effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity);
+    let patchArea = getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, frontAxleLoadN);
+    let patchMultiplier = clamp(patchArea / 30, 0.7, 1.4);
+    let finalGrip = effectiveGrip * patchMultiplier;
+    let maxTractionForceN = frontAxleLoadN * finalGrip;
     let slipRatio = 0;
     let clutchStatus = "ENGAGED";
     let wheelTorqueFtLb = 0;
@@ -786,7 +855,11 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       const staticFrontLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
       frontAxleLoadN = Math.max(staticFrontLoadN - weightTransferN * 0.7, derived.vehicleMassKg * GRAVITY * 0.45);
 
-      maxTractionForceN = frontAxleLoadN * config.tireGripCoeff * aiCorrections.gripMultiplier;
+      effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity);
+      patchArea = getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, frontAxleLoadN);
+      patchMultiplier = clamp(patchArea / 30, 0.7, 1.4);
+      finalGrip = effectiveGrip * patchMultiplier;
+      maxTractionForceN = frontAxleLoadN * finalGrip * aiCorrections.gripMultiplier;
 
       if (wheelForceN > maxTractionForceN) {
         const excessForceRatio = (wheelForceN - maxTractionForceN) / maxTractionForceN;
@@ -807,7 +880,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
           slipRatio = reducedExcess > 0 ? clamp(reducedExcess * 0.5, 0, 2.0) : 0;
         }
 
-        const degradedGrip = tireGripFromSlip(slipRatio * aiCorrections.slipMultiplier, config.tireGripCoeff * aiCorrections.gripMultiplier, config.optimalSlipRatio);
+        const degradedGrip = tireGripFromSlip(slipRatio * aiCorrections.slipMultiplier, finalGrip * aiCorrections.gripMultiplier, config.optimalSlipRatio);
         wheelForceN = Math.min(wheelForceN, frontAxleLoadN * degradedGrip);
         wheelSpeedMps = speedMps * (1 + slipRatio);
       }
@@ -866,11 +939,12 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       const currentSlipPct = Math.abs(slipRatio) * 100;
       if (currentSlipPct > peakSlipPercent) peakSlipPercent = currentSlipPct;
 
-      const slipHeat = Math.abs(slipRatio) * dt * 200;
-      const forceHeat = (wheelForceN * N_TO_LBS / 5000) * dt * 5;
+      const slipHeat = Math.abs(slipRatio) * dt * 200 * compound.heatRate;
+      const forceHeat = (wheelForceN * N_TO_LBS / 5000) * dt * 5 * compound.heatRate;
       tireTemp += slipHeat + forceHeat;
-      tireTemp = lerp(tireTemp, 80, dt * 0.01);
-      tireTemp = clamp(tireTemp, 80, 300);
+      const ambientTemp = 80;
+      tireTemp = lerp(tireTemp, ambientTemp, dt * 0.01 * compound.coolRate);
+      tireTemp = clamp(tireTemp, ambientTemp, 400);
 
       if (distanceFt >= QUARTER_MILE_FT) {
         const overshootFt = distanceFt - QUARTER_MILE_FT;
@@ -898,7 +972,11 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       const wheelRadius = derived.tireRadiusM;
 
       frontAxleLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
-      maxTractionForceN = frontAxleLoadN * config.tireGripCoeff * aiCorrections.gripMultiplier;
+      effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity);
+      patchArea = getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, frontAxleLoadN);
+      patchMultiplier = clamp(patchArea / 30, 0.7, 1.4);
+      finalGrip = effectiveGrip * patchMultiplier;
+      maxTractionForceN = frontAxleLoadN * finalGrip * aiCorrections.gripMultiplier;
 
       let freeRevTorque = getB16Torque(currentRpm, throttle);
       const freeRevCamMult = getCamTorqueMultiplier(currentRpm, vtecActive, config);
@@ -946,14 +1024,14 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
           slipRatio = clamp(reducedExcess * 0.5, 0, 2.0);
         }
 
-        const slipHeat = slipRatio * dt * 150;
+        const slipHeat = slipRatio * dt * 150 * compound.heatRate;
         tireTemp += slipHeat;
       } else {
         slipRatio = 0;
       }
 
-      tireTemp = lerp(tireTemp, 80, dt * 0.01);
-      tireTemp = clamp(tireTemp, 80, 300);
+      tireTemp = lerp(tireTemp, 80, dt * 0.01 * compound.coolRate);
+      tireTemp = clamp(tireTemp, 80, 400);
       clutchStatus = "ENGAGED";
     }
 
@@ -1134,6 +1212,8 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       tireSlipPercent: Math.round(tireSlipPercent * 10) / 10,
       tractionLimit: Math.round(maxTractionForceN * N_TO_LBS * 10) / 10,
       tireTemp: Math.round(tireTemp * 10) / 10,
+      contactPatchArea: Math.round(patchArea * 10) / 10,
+      tireTempOptimal: tireTemp >= compound.optimalTempLow && tireTemp <= compound.optimalTempHigh,
 
       sixtyFootTime: sixtyFootTime !== null ? Math.round(sixtyFootTime * 1000) / 1000 : null,
       threeThirtyTime: threeThirtyTime !== null ? Math.round(threeThirtyTime * 1000) / 1000 : null,
