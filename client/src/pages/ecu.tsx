@@ -215,6 +215,7 @@ function SectionHeader({ title }: { title: string }) {
 export default function EcuPage() {
   const [config, setConfig] = useState<EcuConfig>(() => sharedSim.getEcuConfig());
   const [presets, setPresets] = useState<Preset[]>(() => getAllPresets());
+  const [activePreset, setActivePreset] = useState<string | null>(null);
   const [showSave, setShowSave] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
@@ -236,19 +237,30 @@ export default function EcuPage() {
     const defaults = getDefaultEcuConfig();
     setConfig(defaults);
     sharedSim.setEcuConfig(defaults);
+    setActivePreset("Stock B16A2");
   }, []);
 
   const handleLoadPreset = useCallback((preset: Preset) => {
     const newConfig = { ...preset.config };
     setConfig(newConfig);
     sharedSim.setEcuConfig(newConfig);
+    setActivePreset(preset.name);
     setSaveMsg(`Loaded: ${preset.name}`);
     setTimeout(() => setSaveMsg(""), 2000);
   }, []);
 
+  const handleSaveToActive = useCallback(() => {
+    if (!activePreset) return;
+    savePreset(activePreset, config);
+    refreshPresets();
+    setSaveMsg(`Saved: ${activePreset}`);
+    setTimeout(() => setSaveMsg(""), 2000);
+  }, [activePreset, config, refreshPresets]);
+
   const handleSavePreset = useCallback(() => {
     if (!saveName.trim()) return;
     savePreset(saveName.trim(), config);
+    setActivePreset(saveName.trim());
     setSaveName("");
     setShowSave(false);
     refreshPresets();
@@ -258,10 +270,11 @@ export default function EcuPage() {
 
   const handleDeletePreset = useCallback((name: string) => {
     deletePreset(name);
+    if (activePreset === name) setActivePreset(null);
     refreshPresets();
     setSaveMsg(`Deleted: ${name}`);
     setTimeout(() => setSaveMsg(""), 2000);
-  }, [refreshPresets]);
+  }, [refreshPresets, activePreset]);
 
   return (
     <div className="fixed inset-0 bg-black text-white flex flex-col select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -291,63 +304,77 @@ export default function EcuPage() {
         <SectionHeader title="Presets" />
         <div className="px-2 pb-2" data-testid="presets-section">
           <div className="flex flex-wrap gap-1 mb-2">
-            {presets.map((p) => (
-              <div key={p.name} className="flex items-center gap-0.5">
-                <button
-                  onClick={() => handleLoadPreset(p)}
-                  className="text-[9px] font-mono px-2 py-1 border border-white/25 text-white/80 active:text-white"
-                  data-testid={`preset-load-${p.name.replace(/\s+/g, '-').toLowerCase()}`}
-                >
-                  {p.name.toUpperCase()}
-                </button>
-                {!p.builtIn && (
+            {presets.map((p) => {
+              const isActive = activePreset === p.name;
+              return (
+                <div key={p.name} className="flex items-center gap-0.5">
                   <button
-                    onClick={() => handleDeletePreset(p.name)}
-                    className="text-[9px] font-mono px-1 py-1 border border-white/15 text-white/40 active:text-white"
-                    data-testid={`preset-delete-${p.name.replace(/\s+/g, '-').toLowerCase()}`}
+                    onClick={() => handleLoadPreset(p)}
+                    className={`text-[9px] font-mono px-2 py-1 border ${isActive ? "border-green-500/60 text-green-400 bg-green-500/10" : "border-white/25 text-white/80"} active:text-white`}
+                    data-testid={`preset-load-${p.name.replace(/\s+/g, '-').toLowerCase()}`}
                   >
-                    X
+                    {p.name.toUpperCase()}
                   </button>
-                )}
-              </div>
-            ))}
+                  {!p.builtIn && (
+                    <button
+                      onClick={() => handleDeletePreset(p.name)}
+                      className="text-[9px] font-mono px-1 py-1 border border-white/15 text-white/40 active:text-white"
+                      data-testid={`preset-delete-${p.name.replace(/\s+/g, '-').toLowerCase()}`}
+                    >
+                      X
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          {showSave ? (
-            <div className="flex items-center gap-1">
-              <input
-                type="text"
-                value={saveName}
-                onChange={(e) => setSaveName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleSavePreset(); }}
-                placeholder="Preset name..."
-                className="bg-transparent text-white text-[10px] font-mono border border-white/30 px-2 py-1 flex-1 outline-none focus:border-white/60"
-                autoFocus
-                data-testid="input-preset-name"
-              />
+          <div className="flex gap-1">
+            {activePreset && (
               <button
-                onClick={handleSavePreset}
-                className="text-[9px] font-mono px-2 py-1 border border-white/30 text-white/80"
-                data-testid="button-preset-save-confirm"
+                onClick={handleSaveToActive}
+                className="text-[9px] font-mono px-2 py-1 border border-green-500/40 text-green-400/80 active:text-green-300 flex-1"
+                data-testid="button-save-to-active"
               >
-                SAVE
+                SAVE TO "{activePreset.toUpperCase()}"
               </button>
+            )}
+            {showSave ? (
+              <div className="flex items-center gap-1 flex-1">
+                <input
+                  type="text"
+                  value={saveName}
+                  onChange={(e) => setSaveName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSavePreset(); }}
+                  placeholder="Preset name..."
+                  className="bg-transparent text-white text-[10px] font-mono border border-white/30 px-2 py-1 flex-1 outline-none focus:border-white/60"
+                  autoFocus
+                  data-testid="input-preset-name"
+                />
+                <button
+                  onClick={handleSavePreset}
+                  className="text-[9px] font-mono px-2 py-1 border border-white/30 text-white/80"
+                  data-testid="button-preset-save-confirm"
+                >
+                  SAVE
+                </button>
+                <button
+                  onClick={() => { setShowSave(false); setSaveName(""); }}
+                  className="text-[9px] font-mono px-2 py-1 border border-white/15 text-white/50"
+                  data-testid="button-preset-save-cancel"
+                >
+                  CANCEL
+                </button>
+              </div>
+            ) : (
               <button
-                onClick={() => { setShowSave(false); setSaveName(""); }}
-                className="text-[9px] font-mono px-2 py-1 border border-white/15 text-white/50"
-                data-testid="button-preset-save-cancel"
+                onClick={() => setShowSave(true)}
+                className="text-[9px] font-mono px-2 py-1 border border-white/25 text-white/70 active:text-white flex-1"
+                data-testid="button-save-preset"
               >
-                CANCEL
+                SAVE AS NEW
               </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowSave(true)}
-              className="text-[9px] font-mono px-2 py-1 border border-white/25 text-white/70 active:text-white w-full"
-              data-testid="button-save-preset"
-            >
-              SAVE CURRENT AS PRESET
-            </button>
-          )}
+            )}
+          </div>
           {saveMsg && (
             <div className="text-[9px] font-mono text-white/60 mt-1 text-center" data-testid="text-save-msg">
               {saveMsg}

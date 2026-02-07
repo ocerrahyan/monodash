@@ -165,5 +165,12 @@ export function deletePreset(name: string): void {
 }
 
 export function getAllPresets(): Preset[] {
-  return [...getBuiltInPresets(), ...getSavedPresets()];
+  const builtIn = getBuiltInPresets();
+  const saved = getSavedPresets();
+  const savedNames = new Set(saved.map((p) => p.name));
+  const merged = builtIn.map((p) =>
+    savedNames.has(p.name) ? saved.find((s) => s.name === p.name)! : p
+  );
+  const custom = saved.filter((p) => !builtIn.some((b) => b.name === p.name));
+  return [...merged, ...custom];
 }
