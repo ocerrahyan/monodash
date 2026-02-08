@@ -2,6 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { validatePhysics } from "./aiPhysics";
+import fs from "fs";
+import path from "path";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -63,6 +65,36 @@ export async function registerRoutes(
     } catch (err) {
       console.error("AI physics validation error:", err);
       res.json(defaultCorrections);
+    }
+  });
+
+  app.get("/api/export", async (_req, res) => {
+    try {
+      const exportPath = path.resolve(import.meta.dirname, "..", "FULL_PROJECT_EXPORT.txt");
+      if (!fs.existsSync(exportPath)) {
+        return res.status(404).json({ error: "Export file not found" });
+      }
+      const content = await fs.promises.readFile(exportPath, "utf-8");
+      res.json({ content });
+    } catch (err) {
+      console.error("Export error:", err);
+      res.status(500).json({ error: "Failed to read export" });
+    }
+  });
+
+  app.get("/api/export/download", async (_req, res) => {
+    try {
+      const exportPath = path.resolve(import.meta.dirname, "..", "FULL_PROJECT_EXPORT.txt");
+      if (!fs.existsSync(exportPath)) {
+        return res.status(404).send("Export file not found");
+      }
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Content-Disposition", "attachment; filename=FULL_PROJECT_EXPORT.txt");
+      const stream = fs.createReadStream(exportPath);
+      stream.pipe(res);
+    } catch (err) {
+      console.error("Export download error:", err);
+      res.status(500).send("Failed to download export");
     }
   });
 
