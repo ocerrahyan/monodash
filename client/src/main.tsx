@@ -16,8 +16,12 @@ window.onerror = (message, source, lineno, colno, error) => {
     return true; // prevent default error handling
   }
   logError('global', error || message, `Uncaught error at ${source}:${lineno}`);
+  // Remove pre-loader if present
+  const preLoader = document.getElementById("pre-loader");
+  if (preLoader) preLoader.remove();
+  // Show error fallback if React hasn't rendered yet
   const root = document.getElementById("root");
-  if (root && !root.hasChildNodes()) {
+  if (root && (!root.hasChildNodes() || root.querySelector('#pre-loader'))) {
     root.innerHTML = `
       <div style="background:#1a1a2e;color:#eee;padding:40px;font-family:monospace;min-height:100vh;">
         <h1 style="color:#ff6b6b;">⚠️ JavaScript Error</h1>

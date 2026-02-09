@@ -14,14 +14,20 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
   </head>
   <body style="background:#000;margin:0;overflow:hidden;">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Pre-React loading indicator (replaced when React mounts) -->
+      <div id="pre-loader" style="position:fixed;inset:0;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.2em;opacity:0.5">
+        ⚙️ LOADING ENGINE MONITOR...
+      </div>
+    </div>
     <script>
-      // Suppress Vite error overlay for WebGL context creation failures (non-fatal in non-WebGL browsers)
+      // Suppress Vite error overlay for WebGL/Three.js errors (non-fatal — handled by React error boundaries)
       window.addEventListener('error', function(e) {
-        if (e.message && (e.message.includes('WebGL') || e.message.includes('webgl') || e.message.includes('WebGLRenderer'))) {
+        var msg = e.message || '';
+        if (msg.includes('WebGL') || msg.includes('webgl') || msg.includes('WebGLRenderer') || msg.includes('THREE') || msg.includes('three')) {
           e.preventDefault();
           e.stopImmediatePropagation();
-          console.warn('[mono5] WebGL error suppressed (non-fatal):', e.message);
+          console.warn('[mono5] WebGL/Three.js error suppressed (non-fatal):', msg);
           // Remove any Vite error overlay that might have appeared
           setTimeout(function() {
             var overlay = document.querySelector('vite-error-overlay');

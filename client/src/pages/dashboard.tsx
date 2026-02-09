@@ -1500,7 +1500,14 @@ export default function Dashboard() {
     }
   }, [soundOn]);
 
-  if (!state) return null;
+  if (!state) return (
+    <div className="fixed inset-0 bg-black text-white flex flex-col items-center justify-center select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: 24, marginBottom: 12, opacity: 0.6 }}>⚙️</div>
+        <div style={{ fontSize: 11, letterSpacing: '0.2em', opacity: 0.5 }}>INITIALIZING ENGINE SIM...</div>
+      </div>
+    </div>
+  );
 
   const qmFinished = state.quarterMileET !== null;
   const fs = finishStateRef.current;
