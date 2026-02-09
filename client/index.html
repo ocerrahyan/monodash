@@ -15,6 +15,22 @@
   </head>
   <body style="background:#000;margin:0;overflow:hidden;">
     <div id="root"></div>
+    <script>
+      // Suppress Vite error overlay for WebGL context creation failures (non-fatal in non-WebGL browsers)
+      window.addEventListener('error', function(e) {
+        if (e.message && (e.message.includes('WebGL') || e.message.includes('webgl') || e.message.includes('WebGLRenderer'))) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          console.warn('[mono5] WebGL error suppressed (non-fatal):', e.message);
+          // Remove any Vite error overlay that might have appeared
+          setTimeout(function() {
+            var overlay = document.querySelector('vite-error-overlay');
+            if (overlay) overlay.remove();
+          }, 100);
+          return true;
+        }
+      }, true); // capture phase to intercept before Vite's handler
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

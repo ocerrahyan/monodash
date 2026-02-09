@@ -2484,11 +2484,15 @@ export function DrivetrainView3D(props: DrivetrainView3DProps) {
           <Canvas
             camera={{ position: VIEW_PRESETS[0].position, fov: 42 }}
             style={{ width: "100%", height: "100%" }}
-            gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+            gl={{ antialias: true, alpha: false, powerPreference: "high-performance", failIfMajorPerformanceCaveat: false }}
             onCreated={({ gl }) => {
-              gl.setClearColor("#0e0e0e");
-              gl.toneMapping = THREE.ACESFilmicToneMapping;
-              gl.toneMappingExposure = 1.15;
+              try {
+                gl.setClearColor("#0e0e0e");
+                gl.toneMapping = THREE.ACESFilmicToneMapping;
+                gl.toneMappingExposure = 1.15;
+              } catch (e) {
+                log.warn('DrivetrainView3D', 'GL onCreated error', e);
+              }
             }}
           >
             <Suspense fallback={null}>

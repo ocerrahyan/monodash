@@ -9,6 +9,12 @@ log.info('app', `Environment: ${import.meta.env.MODE}, URL: ${window.location.hr
 
 // Global error handler for uncaught errors
 window.onerror = (message, source, lineno, colno, error) => {
+  const msg = String(message);
+  // WebGL errors are handled by the 3D view's error boundary — don't nuke the app
+  if (msg.includes('WebGL') || msg.includes('webgl') || msg.includes('THREE')) {
+    logError('global', error || message, `WebGL error (non-fatal) at ${source}:${lineno}`);
+    return true; // prevent default error handling
+  }
   logError('global', error || message, `Uncaught error at ${source}:${lineno}`);
   const root = document.getElementById("root");
   if (root && !root.hasChildNodes()) {

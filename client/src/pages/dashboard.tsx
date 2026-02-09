@@ -1,14 +1,55 @@
-import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
+import { useState, useEffect, useRef, useCallback, createContext, useContext, lazy, Suspense, Component, ErrorInfo, ReactNode } from "react";
 import { Link } from "wouter";
 import { type EngineState } from "@/lib/engineSim";
 import { sharedSim } from "@/lib/sharedSim";
 import { EngineSound } from "@/lib/engineSound";
 import { Button } from "@/components/ui/button";
 import { FWDDrivetrainVisual } from "../components/FWDDrivetrainVisual";
-import { DrivetrainView3D } from "@/components/DrivetrainView3D";
 import { useAiMode } from "@/lib/aiMode";
 import { fetchAiCorrections, defaultCorrections, type AiCorrectionFactors } from "@/lib/aiPhysicsClient";
 import { log } from '@shared/logger';
+
+// Lazy-load 3D view so WebGL failures don't crash the entire app
+const DrivetrainView3D = lazy(() =>
+  import("@/components/DrivetrainView3D").then(m => ({ default: m.DrivetrainView3D }))
+);
+
+// Local error boundary for the 3D drivetrain view — prevents WebGL failures from crashing the dashboard
+class DrivetrainErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(err: Error, info: ErrorInfo) {
+    log.error('Dashboard', '3D view error caught by local boundary', { message: err.message });
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          width: '100%', maxWidth: 960, height: 480, margin: '0 auto',
+          background: '#111', borderRadius: 12, border: '1px solid #333',
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          justifyContent: 'center', color: '#888', fontFamily: 'monospace',
+          fontSize: 12, gap: 8,
+        }}>
+          <span style={{ color: '#ff6b6b', fontSize: 14 }}>⚠ 3D View Unavailable</span>
+          <span>WebGL is required for the 3D drivetrain view.</span>
+          <span style={{ opacity: 0.5, fontSize: 10 }}>{this.state.error.message}</span>
+          <button
+            onClick={() => this.setState({ error: null })}
+            style={{
+              marginTop: 8, padding: '4px 12px', background: '#333', color: '#aaa',
+              border: '1px solid #555', borderRadius: 4, cursor: 'pointer',
+              fontFamily: 'inherit', fontSize: 10,
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Drag and Drop Context for gauges
 interface DragContextType {
@@ -1586,18 +1627,31 @@ export default function Dashboard() {
 
           {/* 3D Interactive Drivetrain View */}
           <div className="flex flex-col items-center py-2 col-span-4">
-            <DrivetrainView3D
-              tireRpm={state.tireRpm}
-              rpm={state.rpm}
-              clutchStatus={state.clutchStatus}
-              clutchSlipPct={state.clutchSlipPct}
-              currentGear={state.currentGearDisplay}
-              currentGearRatio={state.currentGearRatio}
-              slipPct={state.tireSlipPercent}
-              drivetrainType={state.drivetrainType}
-              accelerationG={state.accelerationG}
-              throttle={state.throttlePosition}
-            />
+            <DrivetrainErrorBoundary>
+              <Suspense fallback={
+                <div style={{
+                  width: '100%', maxWidth: 960, height: 480, margin: '0 auto',
+                  background: '#111', borderRadius: 12, border: '1px solid #222',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#555', fontFamily: 'monospace', fontSize: 12,
+                }}>
+                  Loading 3D drivetrain view...
+                </div>
+              }>
+                <DrivetrainView3D
+                  tireRpm={state.tireRpm}
+                  rpm={state.rpm}
+                  clutchStatus={state.clutchStatus}
+                  clutchSlipPct={state.clutchSlipPct}
+                  currentGear={state.currentGearDisplay}
+                  currentGearRatio={state.currentGearRatio}
+                  slipPct={state.tireSlipPercent}
+                  drivetrainType={state.drivetrainType}
+                  accelerationG={state.accelerationG}
+                  throttle={state.throttlePosition}
+                />
+              </Suspense>
+            </DrivetrainErrorBoundary>
           </div>
 
         <DragContext.Provider value={dragContextValue}>

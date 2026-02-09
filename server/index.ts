@@ -5,6 +5,14 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { log as slog, logError } from "../shared/logger";
 
+// Prevent silent crashes
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('UNHANDLED REJECTION:', err);
+});
+
 const app = express();
 const httpServer = createServer(app);
 
@@ -84,16 +92,27 @@ app.use((req, res, next) => {
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
-    const { setupVite } = await import("./vite");
-    await setupVite(httpServer, app);
+    try {
+      const { setupVite } = await import("./vite");
+      await setupVite(httpServer, app);
+      console.log('[server] Vite dev server initialized');
+    } catch (e) {
+      console.error('[server] FATAL: Vite setup failed:', e);
+    }
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(port, () => {
     log(`serving on port ${port}`);
+  });
+
+  // Keep the event loop alive — prevent silent exit
+  const keepAlive = setInterval(() => {}, 30_000);
+
+  // Keep event loop alive
+  httpServer.on('close', () => {
+    console.error('[server] HTTP server closed unexpectedly');
+    clearInterval(keepAlive);
   });
 })();

@@ -22,10 +22,14 @@ export async function setupVite(server: Server, app: Express) {
       ...viteLogger,
       error: (msg, options) => {
         viteLogger.error(msg, options);
-        process.exit(1);
+        // Don't exit on error - let the app continue even if Vite has a non-fatal issue
       },
     },
-    server: serverOptions,
+    server: {
+      ...serverOptions,
+      hmr: { ...serverOptions.hmr, overlay: false },
+      fs: { strict: true, deny: ["**/.*"] },
+    },
     appType: "custom",
   });
 

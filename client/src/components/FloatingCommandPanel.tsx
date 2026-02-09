@@ -140,6 +140,21 @@ export interface FloatingPanelProps {
   onSettingNavigate?: (key: string) => void;
 }
 
+// ── Format auto-tune change values for display ─────────────────────────
+function formatChangeValue(val: unknown): string {
+  if (val === null || val === undefined) return '—';
+  if (typeof val === 'boolean') return val ? 'ON' : 'OFF';
+  if (typeof val === 'number') {
+    if (Number.isInteger(val)) return String(val);
+    return val.toFixed(Math.abs(val) < 1 ? 3 : Math.abs(val) < 100 ? 2 : 1);
+  }
+  if (Array.isArray(val)) {
+    if (val.length <= 6) return `[${val.map(v => typeof v === 'number' ? (Number.isInteger(v) ? v : v.toFixed(2)) : v).join(', ')}]`;
+    return `[${val.length} items]`;
+  }
+  return String(val);
+}
+
 // ── Styles ─────────────────────────────────────────────────────────────
 const panelBase: React.CSSProperties = {
   position: 'fixed',
@@ -186,6 +201,9 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
   const [constraints, setConstraints] = useState<AutoTuneConstraints>(getDefaultConstraints());
   const [autoTuneResult, setAutoTuneResult] = useState<AutoTuneResult | null>(null);
   const [autoTuneActive, setAutoTuneActive] = useState(false);
+  const [autoTuneApplied, setAutoTuneApplied] = useState(false);
+  const [changesExpanded, setChangesExpanded] = useState(true);
+  const preAutoTuneConfigRef = useRef<EcuConfig | null>(null);
 
   // Logs state
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
@@ -265,22 +283,33 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
   // Apply auto-tune result
   const applyAutoTune = useCallback(() => {
     if (autoTuneResult) {
+      // Store current config for revert
+      preAutoTuneConfigRef.current = { ...ecuConfig };
       log.info('panel', 'Auto-tune applied', {
         changes: autoTuneResult.changes.length,
         estHp: autoTuneResult.estimatedHp,
+        estTorque: autoTuneResult.estimatedTorque,
+        estQM: autoTuneResult.estimatedQuarterMile,
+        estTopSpeed: autoTuneResult.estimatedTopSpeed,
       });
       onConfigChange(autoTuneResult.config);
       setAutoTuneActive(true);
+      setAutoTuneApplied(true);
+      setChangesExpanded(true);
     }
-  }, [autoTuneResult, onConfigChange]);
+  }, [autoTuneResult, ecuConfig, onConfigChange]);
 
   // Revert auto-tune
   const revertAutoTune = useCallback(() => {
-    onConfigChange(ecuConfig);
+    if (preAutoTuneConfigRef.current) {
+      onConfigChange(preAutoTuneConfigRef.current);
+    }
     setAutoTuneActive(false);
+    setAutoTuneApplied(false);
     setAutoTuneResult(null);
+    preAutoTuneConfigRef.current = null;
     log.info('panel', 'Auto-tune reverted');
-  }, [ecuConfig, onConfigChange]);
+  }, [onConfigChange]);
 
   // Run auto-tune from manual inputs
   const runAutoTune = useCallback(() => {
@@ -652,6 +681,28 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                 padding: 10,
                 marginTop: 8,
               }}>
+                {/* Applied banner */}
+                {autoTuneApplied && (
+                  <div style={{
+                    background: 'rgba(163, 230, 53, 0.12)',
+                    border: '1px solid rgba(163, 230, 53, 0.3)',
+                    borderRadius: 6,
+                    padding: '6px 10px',
+                    marginBottom: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <span style={{ color: '#a3e635', fontWeight: 700, fontSize: 11 }}>
+                      ✅ AUTO-TUNE APPLIED — {autoTuneResult.changes.length} changes
+                    </span>
+                    <span style={{ color: '#888', fontSize: 9 }}>
+                      Target: {autoTuneResult.estimatedQuarterMile}s QM · {autoTuneResult.estimatedHp} HP
+                    </span>
+                  </div>
+                )}
+
+                {/* Performance estimates grid */}
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: '1fr 1fr',
@@ -684,52 +735,135 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                   </div>
                 </div>
 
-                {/* Changes list */}
-                <div style={{ fontSize: 9, color: '#888', marginBottom: 6 }}>
-                  {autoTuneResult.changes.length} changes · {autoTuneResult.feasible ? '✅ Feasible' : '⚠️ May not reach target'}
+                {/* Changes header with expand/collapse */}
+                <div
+                  onClick={() => setChangesExpanded(!changesExpanded)}
+                  style={{
+                    fontSize: 10,
+                    color: '#888',
+                    marginBottom: 4,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    userSelect: 'none',
+                    padding: '4px 0',
+                    borderTop: '1px solid rgba(255,255,255,0.06)',
+                  }}
+                >
+                  <span>
+                    <span style={{ color: changesExpanded ? '#a3e635' : '#666', marginRight: 4 }}>
+                      {changesExpanded ? '▼' : '▶'}
+                    </span>
+                    {autoTuneResult.changes.length} settings changed · {autoTuneResult.feasible ? '✅ Feasible' : '⚠️ May not reach target'}
+                  </span>
+                  <span style={{ color: '#555', fontSize: 9 }}>
+                    {changesExpanded ? 'click to collapse' : 'click to expand'}
+                  </span>
                 </div>
 
-                <div style={{ maxHeight: 120, overflowY: 'auto', marginBottom: 8 }}>
-                  {autoTuneResult.changes.slice(0, 30).map((ch, i) => (
-                    <div key={i} style={{
-                      fontSize: 9,
-                      padding: '2px 0',
-                      borderBottom: '1px solid rgba(255,255,255,0.03)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                    }}>
-                      <span style={{ color: '#4ade80' }}>{ch.field}</span>
-                      <span style={{ color: '#666' }}>{String(ch.from).slice(0, 10)} → <span style={{ color: '#a3e635' }}>{String(ch.to).slice(0, 10)}</span></span>
-                    </div>
-                  ))}
-                </div>
+                {/* Detailed changes list */}
+                {changesExpanded && (
+                  <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 8 }}>
+                    {(() => {
+                      // Group changes by category
+                      const grouped: Record<string, typeof autoTuneResult.changes> = {};
+                      for (const ch of autoTuneResult.changes) {
+                        const cat = getCategoryForKey(ch.field);
+                        if (!grouped[cat]) grouped[cat] = [];
+                        grouped[cat].push(ch);
+                      }
+                      return Object.entries(grouped).map(([category, changes]) => (
+                        <div key={category} style={{ marginBottom: 6 }}>
+                          <div style={{
+                            fontSize: 9,
+                            color: '#a3e635',
+                            fontWeight: 700,
+                            padding: '3px 6px',
+                            background: 'rgba(163, 230, 53, 0.06)',
+                            borderRadius: 3,
+                            marginBottom: 2,
+                            letterSpacing: 0.5,
+                          }}>
+                            {category.toUpperCase()} ({changes.length})
+                          </div>
+                          {changes.map((ch, i) => {
+                            const fromStr = formatChangeValue(ch.from);
+                            const toStr = formatChangeValue(ch.to);
+                            const fieldLabel = ch.field
+                              .replace(/([A-Z])/g, ' $1')
+                              .replace(/([a-z])(\d)/g, '$1 $2')
+                              .trim();
+                            return (
+                              <div key={i} style={{
+                                fontSize: 9,
+                                padding: '3px 6px',
+                                borderBottom: '1px solid rgba(255,255,255,0.03)',
+                                lineHeight: 1.5,
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                  <span style={{ color: '#4ade80', fontWeight: 600 }}>{fieldLabel}</span>
+                                  <span style={{ color: '#666', whiteSpace: 'nowrap' }}>
+                                    <span style={{ color: '#ef4444', opacity: 0.7 }}>{fromStr}</span>
+                                    <span style={{ color: '#555', margin: '0 4px' }}>→</span>
+                                    <span style={{ color: '#a3e635', fontWeight: 600 }}>{toStr}</span>
+                                  </span>
+                                </div>
+                                {ch.reason && (
+                                  <div style={{ color: '#555', fontSize: 8, marginTop: 1, fontStyle: 'italic' }}>
+                                    {ch.reason}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                )}
 
                 {/* Notes */}
-                {autoTuneResult.notes.map((note, i) => (
-                  <div key={i} style={{ fontSize: 9, color: note.startsWith('⚠') ? '#fbbf24' : '#888', marginBottom: 2 }}>
-                    {note}
+                {autoTuneResult.notes.length > 0 && (
+                  <div style={{
+                    background: 'rgba(251, 191, 36, 0.05)',
+                    borderRadius: 4,
+                    padding: '4px 6px',
+                    marginBottom: 6,
+                  }}>
+                    {autoTuneResult.notes.map((note, i) => (
+                      <div key={i} style={{ fontSize: 9, color: note.startsWith('⚠') ? '#fbbf24' : '#888', marginBottom: 2 }}>
+                        {note}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
 
                 {/* Action buttons */}
                 <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                  <button
-                    onClick={applyAutoTune}
-                    style={{
-                      flex: 1,
-                      background: '#a3e635',
-                      color: '#111',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '6px 0',
-                      fontSize: 11,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      fontFamily: 'inherit',
-                    }}
-                  >
-                    ✅ APPLY ALL CHANGES
-                  </button>
+                  {!autoTuneApplied ? (
+                    <button
+                      onClick={applyAutoTune}
+                      style={{
+                        flex: 1,
+                        background: '#a3e635',
+                        color: '#111',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '6px 0',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      ✅ APPLY ALL {autoTuneResult.changes.length} CHANGES
+                    </button>
+                  ) : (
+                    <div style={{ flex: 1, textAlign: 'center', color: '#a3e635', fontSize: 10, padding: '6px 0' }}>
+                      ✅ Applied — running on tuned config
+                    </div>
+                  )}
                   {autoTuneActive && (
                     <button
                       onClick={revertAutoTune}
