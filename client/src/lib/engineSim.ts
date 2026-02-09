@@ -242,6 +242,403 @@ export interface EcuConfig {
   steeringRatio: number;           // Steering ratio (turns lock-to-lock)
   steeringLockDeg: number;         // Maximum steering angle
   powerSteeringEnabled: boolean;
+
+  // ══════════════════════════════════════════════════════════════════
+  // FUEL MAP TABLE (16×16 RPM × Load)
+  // ══════════════════════════════════════════════════════════════════
+  fuelMapRpmBins: number[];        // 16 RPM breakpoints (e.g. 500..8500)
+  fuelMapLoadBins: number[];       // 16 load % breakpoints (0..100)
+  fuelMapTable: number[][];        // 16×16 injector PW multiplier (0.5..2.0)
+  fuelMapInterpolation: 'bilinear' | 'bicubic';
+  fuelMapUnits: 'ms' | 'multiplier' | 'lambda';
+
+  // ══════════════════════════════════════════════════════════════════
+  // IGNITION MAP TABLE (16×16 RPM × Load)
+  // ══════════════════════════════════════════════════════════════════
+  ignMapRpmBins: number[];         // 16 RPM breakpoints
+  ignMapLoadBins: number[];        // 16 load % breakpoints
+  ignMapTable: number[][];         // 16×16 timing advance in degrees BTDC
+  ignMapInterpolation: 'bilinear' | 'bicubic';
+
+  // ══════════════════════════════════════════════════════════════════
+  // VE TABLE (Volumetric Efficiency 16×16)
+  // ══════════════════════════════════════════════════════════════════
+  veMapRpmBins: number[];
+  veMapLoadBins: number[];
+  veMapTable: number[][];          // VE % (0..120+)
+
+  // ══════════════════════════════════════════════════════════════════
+  // AFR TARGET TABLE (16×16)
+  // ══════════════════════════════════════════════════════════════════
+  afrTargetRpmBins: number[];
+  afrTargetLoadBins: number[];
+  afrTargetTable: number[][];      // Target AFR values
+
+  // ══════════════════════════════════════════════════════════════════
+  // BOOST TARGET TABLE (8 RPM bins × 6 gear entries)
+  // ══════════════════════════════════════════════════════════════════
+  boostMapRpmBins: number[];       // 8 RPM breakpoints
+  boostMapGearBins: number[];      // Gear numbers (1..6)
+  boostMapTable: number[][];       // Target boost PSI per gear × RPM
+
+  // ══════════════════════════════════════════════════════════════════
+  // CAN BUS / COMMUNICATIONS
+  // ══════════════════════════════════════════════════════════════════
+  canBusBaudRate: 250 | 500 | 1000;
+  canBusEnabled: boolean;
+  canBusTermination: boolean;
+  canBusRpmId: number;             // CAN ID for RPM broadcast
+  canBusTpsId: number;             // CAN ID for TPS broadcast
+  canBusVssId: number;             // CAN ID for vehicle speed
+  canBusAfrId: number;             // CAN ID for AFR
+  canBusBoostId: number;           // CAN ID for boost
+  canBusTempId: number;            // CAN ID for temperatures
+  canBusCustomId1: number;
+  canBusCustomId2: number;
+  canBusStreamRateHz: number;      // CAN broadcast rate
+
+  // ══════════════════════════════════════════════════════════════════
+  // EMISSIONS / OBD-II
+  // ══════════════════════════════════════════════════════════════════
+  catalyticConverterEnabled: boolean;
+  catLightOffTempF: number;
+  secondaryAirInjEnabled: boolean;
+  egrEnabled: boolean;
+  egrDutyPct: number;
+  evapPurgeEnabled: boolean;
+  evapPurgeDutyCyclePct: number;
+  milClearEnabled: boolean;        // Check engine light clear
+  o2HeaterEnabled: boolean;
+  readinessFlagsOverride: boolean;
+
+  // ══════════════════════════════════════════════════════════════════
+  // INTAKE SYSTEM
+  // ══════════════════════════════════════════════════════════════════
+  intakeType: 'stock' | 'short_ram' | 'cold_air' | 'velocity_stack' | 'itb';
+  intakeFilterType: 'paper' | 'oiled_cotton' | 'foam' | 'mesh';
+  intakePipeDiaMm: number;
+  throttleBodyDiaMm: number;
+  throttleBodyType: 'single' | 'dual' | 'itb';
+  intakeManifoldType: 'stock' | 'ported' | 'aftermarket' | 'custom';
+  intakeManifoldRunnerLenMm: number;
+  intakeManifoldPlenumVolCc: number;
+  intakeResonatorEnabled: boolean;
+  idleAirBypassEnabled: boolean;
+
+  // ══════════════════════════════════════════════════════════════════
+  // EXHAUST SYSTEM
+  // ══════════════════════════════════════════════════════════════════
+  exhaustHeaderType: 'stock_manifold' | '4_1_header' | '4_2_1_header' | 'equal_length';
+  exhaustHeaderPrimaryDiaMm: number;
+  exhaustHeaderPrimaryLenMm: number;
+  exhaustHeaderCollectorDiaMm: number;
+  exhaustPipeDiaMm: number;
+  exhaustMufflerType: 'stock' | 'performance' | 'straight_through' | 'delete';
+  exhaustResonatorEnabled: boolean;
+  exhaustCatbackType: 'single' | 'dual';
+  exhaustTipDiaMm: number;
+  exhaustBackpressureKpa: number;
+
+  // ══════════════════════════════════════════════════════════════════
+  // ENGINE INTERNALS
+  // ══════════════════════════════════════════════════════════════════
+  boreMm: number;
+  strokeMm: number;
+  displacementCc: number;
+  numCylinders: number;
+  firingOrder: number[];
+  connectingRodLenMm: number;
+  pistonType: 'cast' | 'hypereutectic' | 'forged';
+  pistonRingGapMm: number;
+  crankshaftType: 'cast' | 'forged' | 'billet';
+  bearingClearanceMm: number;
+  oilGrade: '0w20' | '5w30' | '5w40' | '10w30' | '10w40' | '15w50';
+  headGasketThickMm: number;
+  headGasketBoreDiaMm: number;
+  deckHeightMm: number;
+  combustionChamberCc: number;
+  valvesPerCylinder: number;
+  intakeValveDiaMm: number;
+  exhaustValveDiaMm: number;
+  valveStemDiaMm: number;
+  valveSpringPressureLb: number;
+  valveSpringInstalledHeightMm: number;
+  rockerArmRatio: number;
+  timingChainType: 'chain' | 'belt' | 'gear';
+  balanceShaftEnabled: boolean;
+
+  // ══════════════════════════════════════════════════════════════════
+  // COOLING SYSTEM
+  // ══════════════════════════════════════════════════════════════════
+  radiatorType: 'stock' | 'aluminum_2row' | 'aluminum_3row' | 'half_size';
+  radiatorCapPsi: number;
+  thermostatOpenTempF: number;
+  thermostatFullOpenTempF: number;
+  coolantType: 'water' | 'green' | 'red_oat' | 'waterless';
+  coolantMixPct: number;           // Coolant/water mix ratio (50 = 50/50)
+  waterPumpType: 'mechanical' | 'electric';
+  oilCoolerEnabled: boolean;
+  oilCoolerRowCount: number;
+
+  // ══════════════════════════════════════════════════════════════════
+  // ELECTRICAL SYSTEM
+  // ══════════════════════════════════════════════════════════════════
+  batteryVoltage: number;
+  alternatorOutputAmps: number;
+  ignitionCoilType: 'oem_distributor' | 'cop' | 'cnp' | 'msd_external';
+  sparkPlugType: 'copper' | 'platinum' | 'iridium';
+  sparkPlugHeatRange: number;      // NGK style (5=hot, 9=cold)
+  wiringHarnessType: 'oem' | 'mil_spec' | 'budget_race';
+  groundingKitInstalled: boolean;
+  relayFanUpgrade: boolean;
+  mainRelayType: 'oem' | 'aftermarket';
+
+  // ══════════════════════════════════════════════════════════════════
+  // TRANSMISSION EXTENDED
+  // ══════════════════════════════════════════════════════════════════
+  transmissionType: 'manual' | 'auto_torqueconv' | 'sequential' | 'dct';
+  clutchType: 'oem_organic' | 'stage1_organic' | 'stage2_kevlar' | 'stage3_cerametallic' | 'stage4_puck' | 'twin_disc';
+  clutchSpringPressureLb: number;
+  flywheelType: 'oem_dual_mass' | 'oem_single' | 'lightweight_chromoly' | 'aluminum';
+  flywheelMassLb: number;
+  synchronizerType: 'brass' | 'carbon' | 'dog_engagement';
+  transFluidType: 'oem_mtf' | 'redline_mtl' | 'amsoil_mtf' | 'gl4_75w90';
+  transFluidTempWarningF: number;
+  limitedSlipPreload: number;      // LSD preload in lb-ft
+  shortShifterInstalled: boolean;
+  shifterCableBushingType: 'oem_rubber' | 'polyurethane' | 'spherical';
+
+  // ══════════════════════════════════════════════════════════════════
+  // TIRE PRESSURE MONITORING (TPMS)
+  // ══════════════════════════════════════════════════════════════════
+  tpmsEnabled: boolean;
+  frontLeftPsi: number;
+  frontRightPsi: number;
+  rearLeftPsi: number;
+  rearRightPsi: number;
+  tpmsColdPsi: number;             // Cold inflation target
+  tpmsHotDeltaPsi: number;         // Expected hot pressure rise
+  tpmsLowWarningPsi: number;
+
+  // ══════════════════════════════════════════════════════════════════
+  // WHEEL SPECS
+  // ══════════════════════════════════════════════════════════════════
+  wheelWidthIn: number;            // Wheel width in inches
+  wheelOffsetMm: number;           // Wheel ET offset
+  wheelBoltPattern: '4x100' | '4x114' | '5x114';
+  wheelCenterBoreMm: number;
+  wheelMaterialType: 'steel' | 'alloy_cast' | 'alloy_forged' | 'carbon';
+  wheelMassLb: number;
+  spareTireType: 'full_size' | 'compact' | 'none';
+
+  // ══════════════════════════════════════════════════════════════════
+  // BRAKE EXTENDED
+  // ══════════════════════════════════════════════════════════════════
+  frontCaliperPistons: number;
+  rearCaliperPistons: number;
+  frontCaliperPistonDiaMm: number;
+  rearCaliperPistonDiaMm: number;
+  masterCylBoreMm: number;
+  brakeBoosterType: 'vacuum' | 'hydraulic' | 'none';
+  brakeLineType: 'rubber' | 'stainless_braided' | 'hard_line';
+  brakeFluidType: 'dot3' | 'dot4' | 'dot5_1' | 'racing';
+  parkingBrakeType: 'drum_in_hat' | 'caliper_ebrake' | 'hydraulic';
+  frontRotorType: 'solid' | 'vented' | 'drilled' | 'slotted' | 'drilled_slotted';
+  rearRotorType: 'solid' | 'drum' | 'vented';
+  frontRotorThickMm: number;
+  rearRotorThickMm: number;
+  brakeDuctingEnabled: boolean;
+
+  // ══════════════════════════════════════════════════════════════════
+  // SAFETY SYSTEMS
+  // ══════════════════════════════════════════════════════════════════
+  rollCageType: 'none' | 'harness_bar' | '4_point' | '6_point' | '10_point';
+  harnessType: 'oem_3point' | '4_point' | '5_point' | '6_point';
+  fireExtinguisherType: 'none' | 'handheld' | 'plumbed';
+  killSwitchEnabled: boolean;
+  batteryDisconnectEnabled: boolean;
+  windowNetEnabled: boolean;
+  helmetRequired: boolean;
+  fuelCellType: 'oem_tank' | 'fia_cell_5gal' | 'fia_cell_10gal' | 'fia_cell_15gal';
+
+  // ══════════════════════════════════════════════════════════════════
+  // BODY / CHASSIS
+  // ══════════════════════════════════════════════════════════════════
+  chassisType: 'unibody' | 'welded_cage' | 'tube_frame';
+  seam_weldEnabled: boolean;
+  undercoatingRemoved: boolean;
+  soundDeadeningRemoved: boolean;
+  brakeLightBarEnabled: boolean;
+  towHookFrontEnabled: boolean;
+  towHookRearEnabled: boolean;
+  frontBumperType: 'oem' | 'delete' | 'lightweight_frp' | 'carbon';
+  rearBumperType: 'oem' | 'delete' | 'lightweight_frp' | 'carbon';
+  hoodType: 'oem_steel' | 'aluminum' | 'carbon' | 'fiberglass';
+  trunkType: 'oem_steel' | 'carbon' | 'fiberglass' | 'delete';
+  fenderType: 'oem' | 'rolled' | 'pulled' | 'wide_body';
+  windowType: 'oem_glass' | 'polycarbonate' | 'lexan';
+  windshieldType: 'oem' | 'lightweight';
+  rearSeatDelete: boolean;
+  carpetDelete: boolean;
+  acDelete: boolean;
+  powerSteeringDelete: boolean;
+  spareTireDelete: boolean;
+
+  // ══════════════════════════════════════════════════════════════════
+  // ENGINE MANAGEMENT / SENSORS EXTENDED
+  // ══════════════════════════════════════════════════════════════════
+  ecuType: 'oem_p28' | 'oem_p72' | 'hondata_s300' | 'hondata_kpro' | 'haltech_elite' | 'aem_infinity' | 'megasquirt' | 'motec_m1';
+  tpsType: 'potentiometer' | 'hall_effect' | 'dual_redundant';
+  mapSensorType: '1bar' | '2bar' | '3bar' | '4bar' | '5bar';
+  iatSensorType: 'oem_thermistor' | 'gm_open_element' | 'bosch';
+  ectSensorType: 'oem_thermistor' | 'aftermarket';
+  crankSensorType: 'oem_24tooth' | 'aftermarket_36minus1' | '60minus2' | '12tooth';
+  camSensorType: 'oem_1pulse' | 'aftermarket_4pulse';
+  knockSensorType: 'piezo_flat' | 'piezo_donut' | 'wideband_knock';
+  fuelPressureSensorEnabled: boolean;
+  fuelPressureSensorRange: number;
+  oilPressureSensorRange: number;
+  ethAnalyzerEnabled: boolean;     // Flex fuel ethanol content sensor
+
+  // ══════════════════════════════════════════════════════════════════
+  // DRIVE-BY-WIRE / ELECTRONIC THROTTLE
+  // ══════════════════════════════════════════════════════════════════
+  electronicThrottleEnabled: boolean;
+  throttleResponseCurve: 'linear' | 'progressive' | 'aggressive' | 'eco';
+  throttleBlipOnDownshift: boolean;
+  throttleIdleCreepPct: number;
+  cruiseControlEnabled: boolean;
+  cruiseControlMaxMph: number;
+
+  // ══════════════════════════════════════════════════════════════════
+  // FUEL INJECTION EXTENDED
+  // ══════════════════════════════════════════════════════════════════
+  injectorType: 'port_low_impedance' | 'port_high_impedance' | 'direct';
+  injectorCount: number;
+  injectorBrandModel: string;
+  injectorFlowAt43Psi: number;     // Rated flow at 43 PSI (cc/min)
+  injectorBalanceMaxPct: number;   // Maximum injector imbalance %
+  fuelRailType: 'oem' | 'high_flow' | 'dual_feed';
+  fuelFilterMicron: number;
+  fuelPumpType: 'oem_in_tank' | 'walbro_255' | 'dw300' | 'external_surge';
+  fuelPumpFlowLph: number;         // Fuel pump flow liters/hour
+  fuelRegulatorBasePsi: number;
+  fuelRegulatorRiseRatio: number;  // Rise ratio vs boost (1:1 standard)
+
+  // ══════════════════════════════════════════════════════════════════
+  // TURBO EXTENDED (detailed compressor/turbine specs)
+  // ══════════════════════════════════════════════════════════════════
+  turboFrameSize: string;          // e.g. "GT28", "GT3076R", "T3/T4"
+  turboCompressorTrim: number;     // Compressor wheel trim (50-82)
+  turboTurbineTrim: number;        // Turbine wheel trim (62-84)
+  turboCompressorInducerMm: number;
+  turboCompressorExducerMm: number;
+  turboTurbineInducerMm: number;
+  turboTurbineExducerMm: number;
+  turboInletFlange: 'T25' | 'T3' | 'T4' | 'T6' | 'V_band';
+  turboExitFlange: 'T25' | 'T3' | 'V_band' | '3inch';
+  turboWastegateType: 'internal' | 'external_38mm' | 'external_44mm' | 'external_60mm';
+  turboWastegateSpringPsi: number;
+  turboBearingType: 'journal' | 'ball_bearing' | 'ceramic_ball';
+  turboOilFeedRestricted: boolean;
+  turboOilDrainSizeMm: number;
+  turboWaterCooled: boolean;
+  turboHousingARTurbine: number;   // A/R ratio of turbine housing
+  turboHousingARCompressor: number;
+  blowOffValveType: 'none' | 'recirculating' | 'atmosphere' | 'dual_port';
+  boostControllerType: 'none' | 'manual_mbc' | 'electronic_solenoid' | 'eboost2';
+  intercoolerType: 'none' | 'fmic' | 'tmic' | 'water_air';
+  intercoolerCoreSizeIn: string;   // e.g. "24x12x3"
+  intercoolerPipingDiaMm: number;
+  chargePipeBoVEnabled: boolean;
+
+  // ══════════════════════════════════════════════════════════════════
+  // DASH / GAUGES / DISPLAY
+  // ══════════════════════════════════════════════════════════════════
+  tachometerRange: number;         // Max RPM on tach face
+  speedometerRange: number;        // Max MPH on speedo face
+  shiftLightEnabled: boolean;
+  shiftLightColor: 'red' | 'blue' | 'green' | 'amber';
+  boostGaugeEnabled: boolean;
+  boostGaugeRange: number;
+  afrGaugeEnabled: boolean;
+  oilPressGaugeEnabled: boolean;
+  oilTempGaugeEnabled: boolean;
+  egtGaugeEnabled: boolean;
+  fuelPressGaugeEnabled: boolean;
+  ethContentGaugeEnabled: boolean;
+  gpsSpeedEnabled: boolean;
+  dataLogOverlayEnabled: boolean;
+
+  // ══════════════════════════════════════════════════════════════════
+  // SUSPENSION EXTENDED (advanced kinematic params)
+  // ══════════════════════════════════════════════════════════════════
+  frontBumpStopGapMm: number;
+  rearBumpStopGapMm: number;
+  frontBumpStopRatekNmm: number;
+  rearBumpStopRatekNmm: number;
+  frontSpringPerchHeightMm: number;
+  rearSpringPerchHeightMm: number;
+  frontStrutTopMountType: 'oem_rubber' | 'pillow_ball' | 'spherical';
+  rearTopMountType: 'oem_rubber' | 'pillow_ball' | 'spherical';
+  coiloverEnabled: boolean;
+  coiloverBrand: string;
+  frontHelperSpringEnabled: boolean;
+  rearHelperSpringEnabled: boolean;
+  frontAdjustableDamper: boolean;
+  rearAdjustableDamper: boolean;
+  frontDamperClicks: number;       // Current damper click setting
+  rearDamperClicks: number;
+  frontRollCenterHeightMm: number;
+  rearRollCenterHeightMm: number;
+  frontAntiDivePct: number;
+  rearAntiSquatPct: number;
+  cornerWeightFLlb: number;
+  cornerWeightFRlb: number;
+  cornerWeightRLlb: number;
+  cornerWeightRRlb: number;
+
+  // ══════════════════════════════════════════════════════════════════
+  // AERO EXTENDED
+  // ══════════════════════════════════════════════════════════════════
+  rearDiffuserEnabled: boolean;
+  rearDiffuserAngleDeg: number;
+  sideSkirtType: 'none' | 'oem' | 'aero';
+  canardEnabled: boolean;
+  canardAngleDeg: number;
+  flatUndertrayEnabled: boolean;
+  fenderVentsEnabled: boolean;
+  hoodVentsEnabled: boolean;
+  rearWingType: 'none' | 'lip' | 'duckbill' | 'gt_wing' | 'swan_neck';
+  frontSplitterMaterialType: 'abs' | 'carbon' | 'aluminum';
+  splitterSupportRods: boolean;
+  aeroBalancePct: number;          // 0=full front, 100=full rear
+
+  // ══════════════════════════════════════════════════════════════════
+  // FUEL ENRICHMENT / TRIM TABLES (8-bin by coolant temp)
+  // ══════════════════════════════════════════════════════════════════
+  warmupEnrichTempBins: number[];  // 8 coolant temp °F bins
+  warmupEnrichPctTable: number[];  // 8 enrichment % values
+  afterstartEnrichPctTable: number[];
+  cranking_pw_tempBins: number[];  // 8 temp bins for cranking PW
+  cranking_pw_msTable: number[];   // 8 cranking PW values
+
+  // ══════════════════════════════════════════════════════════════════
+  // AC / ACCESSORY LOADS
+  // ══════════════════════════════════════════════════════════════════
+  acCompressorLoadHp: number;
+  acIdleUpRpm: number;
+  psFluidType: 'atf' | 'ps_fluid';
+  psPumpType: 'vane' | 'rack_electric';
+  alternatorPulleyRatio: number;
+
+  // ══════════════════════════════════════════════════════════════════
+  // PAINT / COSMETIC (EM1 options)
+  // ══════════════════════════════════════════════════════════════════
+  exteriorColor: string;           // e.g. "Electron Blue Pearl"
+  interiorColor: 'black' | 'gray';
+  sunroofDelete: boolean;
+  tintPct: number;                 // Window tint percentage (0=clear, 5=limo)
 }
 
 export function getDefaultEcuConfig(): EcuConfig {
@@ -492,6 +889,419 @@ export function getDefaultEcuConfig(): EcuConfig {
     steeringRatio: 15.7,             // OEM rack ratio
     steeringLockDeg: 35,             // Max steering angle at wheels
     powerSteeringEnabled: true,
+
+    // ══════════════════════════════════════════════════════════════════
+    // FUEL MAP TABLE (16×16) — B16A2 naturally aspirated baseline
+    // ══════════════════════════════════════════════════════════════════
+    fuelMapRpmBins: [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000],
+    fuelMapLoadBins: [0, 7, 14, 21, 29, 36, 43, 50, 57, 64, 71, 79, 86, 93, 100, 100],
+    fuelMapTable: Array.from({ length: 16 }, () => Array(16).fill(1.0)),
+    fuelMapInterpolation: 'bilinear',
+    fuelMapUnits: 'multiplier',
+
+    // ══════════════════════════════════════════════════════════════════
+    // IGNITION MAP TABLE (16×16) — B16A2 base timing
+    // ══════════════════════════════════════════════════════════════════
+    ignMapRpmBins: [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000],
+    ignMapLoadBins: [0, 7, 14, 21, 29, 36, 43, 50, 57, 64, 71, 79, 86, 93, 100, 100],
+    ignMapTable: Array.from({ length: 16 }, (_, r) =>
+      Array.from({ length: 16 }, (_, c) => {
+        const baseAdv = 14 + (r / 15) * 22 - (c / 15) * 10;
+        return Math.round(Math.max(8, Math.min(40, baseAdv)));
+      })
+    ),
+    ignMapInterpolation: 'bilinear',
+
+    // ══════════════════════════════════════════════════════════════════
+    // VE TABLE (16×16) — typical NA B16A2
+    // ══════════════════════════════════════════════════════════════════
+    veMapRpmBins: [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000],
+    veMapLoadBins: [0, 7, 14, 21, 29, 36, 43, 50, 57, 64, 71, 79, 86, 93, 100, 100],
+    veMapTable: Array.from({ length: 16 }, (_, r) =>
+      Array.from({ length: 16 }, (_, c) => {
+        const ve = 30 + (r / 15) * 55 + (c / 15) * 20;
+        return Math.round(Math.min(105, ve));
+      })
+    ),
+
+    // ══════════════════════════════════════════════════════════════════
+    // AFR TARGET TABLE (16×16)
+    // ══════════════════════════════════════════════════════════════════
+    afrTargetRpmBins: [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000],
+    afrTargetLoadBins: [0, 7, 14, 21, 29, 36, 43, 50, 57, 64, 71, 79, 86, 93, 100, 100],
+    afrTargetTable: Array.from({ length: 16 }, (_, r) =>
+      Array.from({ length: 16 }, (_, c) => {
+        if (c > 12) return 12.2;    // WOT rich
+        if (c < 4) return 14.7;     // Light load stoich
+        return 14.7 - (c / 15) * 2.5;
+      })
+    ),
+
+    // ══════════════════════════════════════════════════════════════════
+    // BOOST TARGET TABLE (8 RPM × 6 gears)
+    // ══════════════════════════════════════════════════════════════════
+    boostMapRpmBins: [2000, 3000, 4000, 5000, 5500, 6000, 7000, 8000],
+    boostMapGearBins: [1, 2, 3, 4, 5, 6],
+    boostMapTable: Array.from({ length: 8 }, () => Array(6).fill(8)),
+
+    // ══════════════════════════════════════════════════════════════════
+    // CAN BUS
+    // ══════════════════════════════════════════════════════════════════
+    canBusBaudRate: 500,
+    canBusEnabled: false,
+    canBusTermination: true,
+    canBusRpmId: 0x100,
+    canBusTpsId: 0x101,
+    canBusVssId: 0x102,
+    canBusAfrId: 0x103,
+    canBusBoostId: 0x104,
+    canBusTempId: 0x105,
+    canBusCustomId1: 0x200,
+    canBusCustomId2: 0x201,
+    canBusStreamRateHz: 50,
+
+    // ══════════════════════════════════════════════════════════════════
+    // EMISSIONS / OBD-II
+    // ══════════════════════════════════════════════════════════════════
+    catalyticConverterEnabled: true,
+    catLightOffTempF: 600,
+    secondaryAirInjEnabled: false,
+    egrEnabled: false,
+    egrDutyPct: 0,
+    evapPurgeEnabled: true,
+    evapPurgeDutyCyclePct: 50,
+    milClearEnabled: false,
+    o2HeaterEnabled: true,
+    readinessFlagsOverride: false,
+
+    // ══════════════════════════════════════════════════════════════════
+    // INTAKE SYSTEM (EM1 stock)
+    // ══════════════════════════════════════════════════════════════════
+    intakeType: 'stock',
+    intakeFilterType: 'paper',
+    intakePipeDiaMm: 62,
+    throttleBodyDiaMm: 62,           // OEM B16A2 62mm
+    throttleBodyType: 'single',
+    intakeManifoldType: 'stock',
+    intakeManifoldRunnerLenMm: 350,  // OEM B16A2 runner length
+    intakeManifoldPlenumVolCc: 2800,
+    intakeResonatorEnabled: true,
+    idleAirBypassEnabled: true,
+
+    // ══════════════════════════════════════════════════════════════════
+    // EXHAUST SYSTEM (EM1 stock)
+    // ══════════════════════════════════════════════════════════════════
+    exhaustHeaderType: 'stock_manifold',
+    exhaustHeaderPrimaryDiaMm: 38,
+    exhaustHeaderPrimaryLenMm: 305,
+    exhaustHeaderCollectorDiaMm: 51,
+    exhaustPipeDiaMm: 51,            // OEM 2" exhaust
+    exhaustMufflerType: 'stock',
+    exhaustResonatorEnabled: true,
+    exhaustCatbackType: 'single',
+    exhaustTipDiaMm: 63,
+    exhaustBackpressureKpa: 8,
+
+    // ══════════════════════════════════════════════════════════════════
+    // ENGINE INTERNALS (B16A2 stock specs)
+    // ══════════════════════════════════════════════════════════════════
+    boreMm: 81,                      // B16A2 bore
+    strokeMm: 77.4,                  // B16A2 stroke
+    displacementCc: 1595,            // 1.6L
+    numCylinders: 4,
+    firingOrder: [1, 3, 4, 2],
+    connectingRodLenMm: 134,         // B16A2 rod length
+    pistonType: 'hypereutectic',
+    pistonRingGapMm: 0.25,
+    crankshaftType: 'forged',         // B16A2 has forged crank
+    bearingClearanceMm: 0.03,
+    oilGrade: '5w30',
+    headGasketThickMm: 0.6,
+    headGasketBoreDiaMm: 82,
+    deckHeightMm: 203.9,             // B16A2 block deck height
+    combustionChamberCc: 41.6,
+    valvesPerCylinder: 4,
+    intakeValveDiaMm: 33,            // B16A2 intake valve
+    exhaustValveDiaMm: 29,           // B16A2 exhaust valve
+    valveStemDiaMm: 5.5,
+    valveSpringPressureLb: 42,
+    valveSpringInstalledHeightMm: 37,
+    rockerArmRatio: 1.0,             // DOHC — direct actuation (rocker ratio 1:1)
+    timingChainType: 'belt',          // B16A2 uses timing belt
+    balanceShaftEnabled: false,
+
+    // ══════════════════════════════════════════════════════════════════
+    // COOLING SYSTEM
+    // ══════════════════════════════════════════════════════════════════
+    radiatorType: 'stock',
+    radiatorCapPsi: 16,              // OEM 1.1 bar ≈ 16 PSI
+    thermostatOpenTempF: 170,
+    thermostatFullOpenTempF: 190,
+    coolantType: 'green',
+    coolantMixPct: 50,
+    waterPumpType: 'mechanical',
+    oilCoolerEnabled: false,
+    oilCoolerRowCount: 0,
+
+    // ══════════════════════════════════════════════════════════════════
+    // ELECTRICAL SYSTEM
+    // ══════════════════════════════════════════════════════════════════
+    batteryVoltage: 12.6,
+    alternatorOutputAmps: 70,        // OEM EM1 alternator
+    ignitionCoilType: 'oem_distributor',
+    sparkPlugType: 'copper',         // NGK BKR6E-11
+    sparkPlugHeatRange: 6,
+    wiringHarnessType: 'oem',
+    groundingKitInstalled: false,
+    relayFanUpgrade: false,
+    mainRelayType: 'oem',
+
+    // ══════════════════════════════════════════════════════════════════
+    // TRANSMISSION EXTENDED (S4C)
+    // ══════════════════════════════════════════════════════════════════
+    transmissionType: 'manual',
+    clutchType: 'oem_organic',
+    clutchSpringPressureLb: 1800,
+    flywheelType: 'oem_single',
+    flywheelMassLb: 14,              // OEM B16A2 single mass flywheel ~14 lbs
+    synchronizerType: 'brass',
+    transFluidType: 'oem_mtf',
+    transFluidTempWarningF: 250,
+    limitedSlipPreload: 0,
+    shortShifterInstalled: false,
+    shifterCableBushingType: 'oem_rubber',
+
+    // ══════════════════════════════════════════════════════════════════
+    // TPMS
+    // ══════════════════════════════════════════════════════════════════
+    tpmsEnabled: false,
+    frontLeftPsi: 32,
+    frontRightPsi: 32,
+    rearLeftPsi: 30,
+    rearRightPsi: 30,
+    tpmsColdPsi: 32,
+    tpmsHotDeltaPsi: 4,
+    tpmsLowWarningPsi: 26,
+
+    // ══════════════════════════════════════════════════════════════════
+    // WHEEL SPECS (OEM EM1: 15x6 ET50)
+    // ══════════════════════════════════════════════════════════════════
+    wheelWidthIn: 6,
+    wheelOffsetMm: 50,
+    wheelBoltPattern: '4x100',
+    wheelCenterBoreMm: 56.1,
+    wheelMaterialType: 'alloy_cast',
+    wheelMassLb: 13,
+    spareTireType: 'compact',
+
+    // ══════════════════════════════════════════════════════════════════
+    // BRAKE EXTENDED (OEM EM1)
+    // ══════════════════════════════════════════════════════════════════
+    frontCaliperPistons: 1,
+    rearCaliperPistons: 1,
+    frontCaliperPistonDiaMm: 51,
+    rearCaliperPistonDiaMm: 34,
+    masterCylBoreMm: 23.8,           // 15/16" OEM master cylinder
+    brakeBoosterType: 'vacuum',
+    brakeLineType: 'rubber',
+    brakeFluidType: 'dot3',
+    parkingBrakeType: 'drum_in_hat',
+    frontRotorType: 'solid',          // EM1 front: 262mm solid disc
+    rearRotorType: 'drum',            // EM1 rear: drum
+    frontRotorThickMm: 22,
+    rearRotorThickMm: 9,
+    brakeDuctingEnabled: false,
+
+    // ══════════════════════════════════════════════════════════════════
+    // SAFETY SYSTEMS
+    // ══════════════════════════════════════════════════════════════════
+    rollCageType: 'none',
+    harnessType: 'oem_3point',
+    fireExtinguisherType: 'none',
+    killSwitchEnabled: false,
+    batteryDisconnectEnabled: false,
+    windowNetEnabled: false,
+    helmetRequired: false,
+    fuelCellType: 'oem_tank',
+
+    // ══════════════════════════════════════════════════════════════════
+    // BODY / CHASSIS (EM1 stock)
+    // ══════════════════════════════════════════════════════════════════
+    chassisType: 'unibody',
+    seam_weldEnabled: false,
+    undercoatingRemoved: false,
+    soundDeadeningRemoved: false,
+    brakeLightBarEnabled: false,
+    towHookFrontEnabled: false,
+    towHookRearEnabled: false,
+    frontBumperType: 'oem',
+    rearBumperType: 'oem',
+    hoodType: 'oem_steel',
+    trunkType: 'oem_steel',
+    fenderType: 'oem',
+    windowType: 'oem_glass',
+    windshieldType: 'oem',
+    rearSeatDelete: false,
+    carpetDelete: false,
+    acDelete: false,
+    powerSteeringDelete: false,
+    spareTireDelete: false,
+
+    // ══════════════════════════════════════════════════════════════════
+    // ENGINE MANAGEMENT / SENSORS
+    // ══════════════════════════════════════════════════════════════════
+    ecuType: 'oem_p72',              // OEM B16A2 ECU
+    tpsType: 'potentiometer',
+    mapSensorType: '1bar',
+    iatSensorType: 'oem_thermistor',
+    ectSensorType: 'oem_thermistor',
+    crankSensorType: 'oem_24tooth',
+    camSensorType: 'oem_1pulse',
+    knockSensorType: 'piezo_flat',
+    fuelPressureSensorEnabled: false,
+    fuelPressureSensorRange: 100,
+    oilPressureSensorRange: 150,
+    ethAnalyzerEnabled: false,
+
+    // ══════════════════════════════════════════════════════════════════
+    // DRIVE-BY-WIRE / ELECTRONIC THROTTLE
+    // ══════════════════════════════════════════════════════════════════
+    electronicThrottleEnabled: false,  // EM1 is cable throttle
+    throttleResponseCurve: 'linear',
+    throttleBlipOnDownshift: false,
+    throttleIdleCreepPct: 5,
+    cruiseControlEnabled: true,
+    cruiseControlMaxMph: 120,
+
+    // ══════════════════════════════════════════════════════════════════
+    // FUEL INJECTION EXTENDED
+    // ══════════════════════════════════════════════════════════════════
+    injectorType: 'port_high_impedance',
+    injectorCount: 4,
+    injectorBrandModel: 'OEM Keihin',
+    injectorFlowAt43Psi: 240,
+    injectorBalanceMaxPct: 5,
+    fuelRailType: 'oem',
+    fuelFilterMicron: 10,
+    fuelPumpType: 'oem_in_tank',
+    fuelPumpFlowLph: 110,            // OEM EM1 fuel pump ~110 LPH
+    fuelRegulatorBasePsi: 43,
+    fuelRegulatorRiseRatio: 1.0,
+
+    // ══════════════════════════════════════════════════════════════════
+    // TURBO EXTENDED (defaults for a common B16 turbo kit)
+    // ══════════════════════════════════════════════════════════════════
+    turboFrameSize: 'GT2860RS',
+    turboCompressorTrim: 60,
+    turboTurbineTrim: 76,
+    turboCompressorInducerMm: 44,
+    turboCompressorExducerMm: 60,
+    turboTurbineInducerMm: 53,
+    turboTurbineExducerMm: 47,
+    turboInletFlange: 'T25',
+    turboExitFlange: 'V_band',
+    turboWastegateType: 'internal',
+    turboWastegateSpringPsi: 7,
+    turboBearingType: 'ball_bearing',
+    turboOilFeedRestricted: true,
+    turboOilDrainSizeMm: 16,
+    turboWaterCooled: true,
+    turboHousingARTurbine: 0.64,
+    turboHousingARCompressor: 0.42,
+    blowOffValveType: 'recirculating',
+    boostControllerType: 'electronic_solenoid',
+    intercoolerType: 'fmic',
+    intercoolerCoreSizeIn: '24x12x3',
+    intercoolerPipingDiaMm: 63,
+    chargePipeBoVEnabled: true,
+
+    // ══════════════════════════════════════════════════════════════════
+    // DASH / GAUGES / DISPLAY
+    // ══════════════════════════════════════════════════════════════════
+    tachometerRange: 9000,
+    speedometerRange: 160,
+    shiftLightEnabled: false,
+    shiftLightColor: 'red',
+    boostGaugeEnabled: false,
+    boostGaugeRange: 30,
+    afrGaugeEnabled: false,
+    oilPressGaugeEnabled: false,
+    oilTempGaugeEnabled: false,
+    egtGaugeEnabled: false,
+    fuelPressGaugeEnabled: false,
+    ethContentGaugeEnabled: false,
+    gpsSpeedEnabled: false,
+    dataLogOverlayEnabled: false,
+
+    // ══════════════════════════════════════════════════════════════════
+    // SUSPENSION EXTENDED
+    // ══════════════════════════════════════════════════════════════════
+    frontBumpStopGapMm: 60,
+    rearBumpStopGapMm: 65,
+    frontBumpStopRatekNmm: 30,
+    rearBumpStopRatekNmm: 25,
+    frontSpringPerchHeightMm: 150,
+    rearSpringPerchHeightMm: 140,
+    frontStrutTopMountType: 'oem_rubber',
+    rearTopMountType: 'oem_rubber',
+    coiloverEnabled: false,
+    coiloverBrand: 'None',
+    frontHelperSpringEnabled: false,
+    rearHelperSpringEnabled: false,
+    frontAdjustableDamper: false,
+    rearAdjustableDamper: false,
+    frontDamperClicks: 5,
+    rearDamperClicks: 5,
+    frontRollCenterHeightMm: 35,
+    rearRollCenterHeightMm: 90,
+    frontAntiDivePct: 20,
+    rearAntiSquatPct: 15,
+    cornerWeightFLlb: 760,          // EM1 ~61% front: ~760 FL, ~760 FR
+    cornerWeightFRlb: 760,
+    cornerWeightRLlb: 485,
+    cornerWeightRRlb: 485,
+
+    // ══════════════════════════════════════════════════════════════════
+    // AERO EXTENDED
+    // ══════════════════════════════════════════════════════════════════
+    rearDiffuserEnabled: false,
+    rearDiffuserAngleDeg: 12,
+    sideSkirtType: 'oem',
+    canardEnabled: false,
+    canardAngleDeg: 10,
+    flatUndertrayEnabled: false,
+    fenderVentsEnabled: false,
+    hoodVentsEnabled: false,
+    rearWingType: 'none',
+    frontSplitterMaterialType: 'abs',
+    splitterSupportRods: false,
+    aeroBalancePct: 45,
+
+    // ══════════════════════════════════════════════════════════════════
+    // FUEL ENRICHMENT / TRIM TABLES
+    // ══════════════════════════════════════════════════════════════════
+    warmupEnrichTempBins: [-40, 0, 40, 80, 120, 160, 190, 210],
+    warmupEnrichPctTable: [45, 35, 25, 18, 10, 5, 0, 0],
+    afterstartEnrichPctTable: [30, 22, 15, 10, 5, 2, 0, 0],
+    cranking_pw_tempBins: [-40, 0, 40, 80, 120, 160, 190, 210],
+    cranking_pw_msTable: [25, 20, 17, 15, 13, 12, 11, 10],
+
+    // ══════════════════════════════════════════════════════════════════
+    // AC / ACCESSORY LOADS
+    // ══════════════════════════════════════════════════════════════════
+    acCompressorLoadHp: 5,
+    acIdleUpRpm: 100,
+    psFluidType: 'ps_fluid',
+    psPumpType: 'vane',
+    alternatorPulleyRatio: 2.5,
+
+    // ══════════════════════════════════════════════════════════════════
+    // PAINT / COSMETIC
+    // ══════════════════════════════════════════════════════════════════
+    exteriorColor: 'Electron Blue Pearl',
+    interiorColor: 'black',
+    sunroofDelete: false,
+    tintPct: 0,
   };
 }
 

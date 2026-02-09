@@ -1,7 +1,40 @@
-import React, { useRef, useMemo, useState, useCallback, Suspense } from "react";
+import React, { useRef, useMemo, useState, useCallback, Suspense, Component, ErrorInfo, ReactNode } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Html } from "@react-three/drei";
 import * as THREE from "three";
+
+// ── WebGL error boundary ─────────────────────────────────────────────
+// Catches WebGL context creation failures so rest of dashboard survives
+class WebGLErrorBoundary extends Component<{ children: ReactNode; height: number }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(err: Error, info: ErrorInfo) {
+    console.warn('[DrivetrainView3D] WebGL error caught:', err.message, info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          width: '100%', height: this.props.height, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', background: '#111', borderRadius: 12,
+          border: '1px solid #333', color: '#888', fontFamily: 'monospace', fontSize: 12, gap: 8,
+        }}>
+          <span style={{ color: '#ff6b6b', fontSize: 14 }}>⚠ WebGL unavailable</span>
+          <span>3D drivetrain view requires a browser with WebGL support.</span>
+          <span style={{ opacity: 0.5 }}>{this.state.error.message}</span>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function isWebGLAvailable(): boolean {
+  try {
+    const c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') || c.getContext('webgl'));
+  } catch { return false; }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // REAL-WORLD DIMENSIONS  (Honda Civic EK / EM1 — B16A2 + S4C)
@@ -19,9 +52,12 @@ const RIM_R            = RIM_DIA / 2;                    // 1.905
 const TIRE_TUBE_R      = SIDEWALL_H * 0.82;             // tube radius for torus
 const TIRE_TORUS_R     = TIRE_OR - TIRE_TUBE_R;         // center-line radius
 
-// CV axle
+// CV axle — B16A2/S4C has unequal half-shafts:
+// Driver (right) side: short 345mm shaft + intermediate shaft inside trans
+// Passenger (left) side: long 610mm shaft
 const AXLE_R           = 12.5 * S;   // 0.125
-const AXLE_LEN         = 610 * S;    // 6.10
+const DRIVER_AXLE_LEN  = 345 * S;    // 3.45  (short side — intermediate shaft)
+const PASS_AXLE_LEN    = 610 * S;    // 6.10  (long side — full length)
 const CV_R             = 38 * S;     // 0.38
 const CV_LEN           = 76 * S;     // 0.76
 const BOOT_LEN         = 80 * S;     // 0.80
@@ -93,6 +129,8 @@ export interface DrivetrainView3DProps {
   currentGearRatio: number;
   slipPct: number;
   drivetrainType: string;  // 'FWD' | 'RWD' | 'AWD'
+  accelerationG?: number;  // longitudinal accel in G (positive = accel, negative = braking)
+  throttle?: number;       // 0-100 throttle position
 }
 
 // safe-number helper — any NaN / Infinity → fallback
@@ -432,7 +470,10 @@ function BrakeAssembly({ rotationAngle }: { rotationAngle: number }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // HUB / KNUCKLE / SUSPENSION
 // ═══════════════════════════════════════════════════════════════════════════
-function HubKnuckleSuspension({ position }: { position: [number, number, number] }) {
+function HubKnuckleSuspension({ position, compression = 0 }: { position: [number, number, number]; compression?: number }) {
+  // compression: 0 = neutral, negative = compressed (dive/squat), positive = extended
+  const compressedH = SPRING_H + compression;  // shorter when compressed (compression is negative)
+  const strutOffset = compression * 0.5;        // strut rod extends/retracts with compression
   return (
     <group position={position}>
       {/* ── STEERING KNUCKLE ── */}
@@ -459,8 +500,8 @@ function HubKnuckleSuspension({ position }: { position: [number, number, number]
           <cylinderGeometry args={[STRUT_R, STRUT_R * 0.9, STRUT_H, 16]} />
           <meshStandardMaterial color="#3a3a3a" metalness={0.6} roughness={0.4} />
         </mesh>
-        {/* Strut rod (chrome) */}
-        <mesh position={[0, STRUT_H * 0.45, 0]}>
+        {/* Strut rod (chrome) — slides with compression */}
+        <mesh position={[0, STRUT_H * 0.45 + strutOffset, 0]}>
           <cylinderGeometry args={[STRUT_R * 0.35, STRUT_R * 0.35, STRUT_H * 0.3, 8]} />
           <meshStandardMaterial color="#bbb" metalness={0.95} roughness={0.05} />
         </mesh>
@@ -470,11 +511,11 @@ function HubKnuckleSuspension({ position }: { position: [number, number, number]
           <meshStandardMaterial color="#333" roughness={0.8} />
         </mesh>
 
-        {/* ── COIL SPRING ── */}
+        {/* ── COIL SPRING (height varies with compression) ── */}
         <CoilSpring
           innerR={SPRING_IR}
           outerR={SPRING_OR}
-          height={SPRING_H}
+          height={compressedH}
           coils={7}
           wireR={0.04}
         />
@@ -1093,7 +1134,7 @@ function ComponentLabels({
       <Label3D position={[tirePos, labelY - 0.3, 0]} color="#555" fontSize={9}>23.4&quot; DIA</Label3D>
       <Label3D position={[hubPos, labelY, 0]} color="#666">HUB / KNUCKLE</Label3D>
       <Label3D position={[outerCvX, labelY, 0]} color="#666">RZEPPA (OUTER)</Label3D>
-      <Label3D position={[shaftCenterX, labelY + 1.8, 0]} color="#666">CV HALF-SHAFT 610mm</Label3D>
+      <Label3D position={[shaftCenterX, labelY + 1.8, 0]} color="#666">CV HALF-SHAFT (DRIVER) 345mm</Label3D>
       <Label3D position={[innerCvX, labelY, 0]} color="#666">TRIPOD (INNER)</Label3D>
       <Label3D position={[transPos, labelY, 0]} color="#5ae895" fontSize={12}>S4C 5-SPEED</Label3D>
       <Label3D position={[transPos, labelY - 0.3, 0]} color="#4ac07a" fontSize={9}>FINAL DRIVE 4.400</Label3D>
@@ -1559,10 +1600,11 @@ function CabinShifter({
 // Three.js WebGLRenderer automatically handles face-winding for negative scale.
 // ═══════════════════════════════════════════════════════════════════════════
 function WheelCornerAssembly({
-  position, rotationAngle, side, showSuspension = true,
+  position, rotationAngle, side, showSuspension = true, compression = 0,
 }: {
   position: [number, number, number]; rotationAngle: number;
   side: 'left' | 'right'; showSuspension?: boolean;
+  compression?: number;
 }) {
   const mirror: [number, number, number] = side === 'left' ? [-1, 1, 1] : [1, 1, 1];
   return (
@@ -1575,7 +1617,7 @@ function WheelCornerAssembly({
       </group>
       {/* Hub / Knuckle / McPherson strut / LCA / tie rod / sway bar */}
       {showSuspension && (
-        <HubKnuckleSuspension position={[-1.2, 0, 0]} />
+        <HubKnuckleSuspension position={[-1.2, 0, 0]} compression={compression} />
       )}
     </group>
   );
@@ -1667,16 +1709,17 @@ function RearDifferential({
 }
 
 function RearAxleAssembly({
-  rotationAngle, drivetrainType, rearDiffType,
+  rotationAngle, drivetrainType, rearDiffType, compression = 0,
 }: {
   rotationAngle: number;
   drivetrainType: string; rearDiffType: string;
+  compression?: number;
 }) {
   const isRearDriven = drivetrainType === 'RWD' || drivetrainType === 'AWD';
   const rearZ = REAR_AXLE_Z;
-  // Rear wheels spread symmetrically about X=0 — same track as front
-  const rearTireX_R = 9.0;
-  const rearTireX_L = -9.0;
+  // Rear wheels spread symmetrically about X=0 — same track as front (1480mm)
+  const rearTireX_R = 7.4;
+  const rearTireX_L = -7.4;
 
   return (
     <group position={[0, 0, rearZ]}>
@@ -1685,12 +1728,14 @@ function RearAxleAssembly({
         position={[rearTireX_R, 0, 0]}
         rotationAngle={isRearDriven ? rotationAngle : rotationAngle * 0.95}
         side="right"
+        compression={compression}
       />
       {/* Rear left wheel — full assembly mirrored outward */}
       <WheelCornerAssembly
         position={[rearTireX_L, 0, 0]}
         rotationAngle={isRearDriven ? rotationAngle : rotationAngle * 0.95}
         side="left"
+        compression={compression}
       />
 
       {isRearDriven && (
@@ -1755,10 +1800,11 @@ function MainPropShaft({
 // PASSENGER FRONT WHEEL (mirrored left side with full CV assembly)
 // ═══════════════════════════════════════════════════════════════════════════
 function PassengerFrontAssembly({
-  tireX, transX, rotationAngle, isFrontDriven,
+  tireX, transX, rotationAngle, isFrontDriven, compression = 0,
 }: {
   tireX: number; transX: number;
   rotationAngle: number; isFrontDriven: boolean;
+  compression?: number;
 }) {
   // Passenger-side positions: mirrored from driver (negative X)
   const pTireX = -tireX;
@@ -1778,6 +1824,7 @@ function PassengerFrontAssembly({
         position={[pTireX, 0, 0]}
         rotationAngle={rotationAngle}
         side="left"
+        compression={compression}
       />
 
       {isFrontDriven && (
@@ -2137,9 +2184,20 @@ function GroundAndEnvironment() {
 function DrivetrainScene(props: DrivetrainView3DProps) {
   const { tireRpm, rpm, clutchStatus, currentGear, slipPct, drivetrainType } = props;
 
+  const accelG = sn(props.accelerationG ?? 0);
+  const throttlePct = sn(props.throttle ?? 0);
+
   const dtType = drivetrainType || 'FWD';
   const isFrontDriven = dtType === 'FWD' || dtType === 'AWD';
   const isRearDriven = dtType === 'RWD' || dtType === 'AWD';
+
+  // ── Suspension compression from weight transfer ──
+  // Positive accelG → nose lifts, rear squats. Negative accelG → front dives.
+  // Clamp to ±0.35 scene units for visual range.
+  const maxComp = 0.35;
+  const rawTransfer = accelG * 0.3;   // scale G to visual compression
+  const frontCompression = Math.max(-maxComp, Math.min(maxComp, -rawTransfer)); // front dives under accel (negative G=extension)
+  const rearCompression  = Math.max(-maxComp, Math.min(maxComp,  rawTransfer)); // rear squats under accel
 
   // Cumulative rotation refs
   const tireRotRef = useRef(0);
@@ -2168,12 +2226,12 @@ function DrivetrainScene(props: DrivetrainView3DProps) {
   });
 
   // ── LAYOUT (everything along +X axis, tire on right, trans on left) ──
-  // tireX=9.0 gives enough clearance for the passenger-side wheel
-  // to sit past the flywheel / clutch without clipping.
-  const tireX      = 9.0;
+  // tireX=7.4 = 740mm half-track → 1480mm total front track (real EM1)
+  // Driver side uses short 345mm CV shaft (intermediate shaft inside trans)
+  const tireX      = 7.4;
   const hubX       = tireX - 1.2;
   const outerCvX   = hubX - 1.5;
-  const innerCvX   = outerCvX - AXLE_LEN + CV_LEN;
+  const innerCvX   = outerCvX - DRIVER_AXLE_LEN + CV_LEN;
   const transX     = innerCvX - 2.5;
   const clutchX    = transX - TRANS_D * 0.5 - CLUTCH_THICK - 0.1;
   const fwX        = clutchX - FW_THICK - 0.1;
@@ -2198,6 +2256,7 @@ function DrivetrainScene(props: DrivetrainView3DProps) {
         position={[tireX, 0, 0]}
         rotationAngle={tireRotRef.current}
         side="right"
+        compression={frontCompression}
       />
 
       {/* ── OUTER CV JOINT (Rzeppa) ── */}
@@ -2255,6 +2314,7 @@ function DrivetrainScene(props: DrivetrainView3DProps) {
         transX={transX}
         rotationAngle={tireRotRef.current}
         isFrontDriven={isFrontDriven}
+        compression={frontCompression}
       />
 
       {/* ── REAR AXLE ASSEMBLY (both rear wheels + diff/torsion beam) ── */}
@@ -2262,6 +2322,7 @@ function DrivetrainScene(props: DrivetrainView3DProps) {
         rotationAngle={tireRotRef.current}
         drivetrainType={dtType}
         rearDiffType={props.drivetrainType === 'FWD' ? 'open' : 'lsd'}
+        compression={rearCompression}
       />
 
       {/* ── PROPSHAFT (RWD/AWD only) ── */}
@@ -2289,7 +2350,7 @@ function DrivetrainScene(props: DrivetrainView3DProps) {
       <DimensionLine
         from={[innerCvX, -2.8, 0]}
         to={[outerCvX, -2.8, 0]}
-        label="610mm"
+        label="345mm (driver)"
         color="#5a5a5a"
       />
       <DimensionLine
@@ -2383,32 +2444,45 @@ export function DrivetrainView3D(props: DrivetrainView3DProps) {
         ))}
       </div>
 
-      <Canvas
-        key={activePreset}
-        camera={{ position: preset.position, fov: 42 }}
-        style={{ width: "100%", height: "100%" }}
-        gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
-        onCreated={({ gl }) => {
-          gl.setClearColor("#0e0e0e");
-          gl.toneMapping = THREE.ACESFilmicToneMapping;
-          gl.toneMappingExposure = 1.15;
-        }}
-      >
-        <Suspense fallback={null}>
-          <OrbitControls
-            enablePan={true}
-            enableZoom={true}
-            enableRotate={true}
-            minDistance={2}
-            maxDistance={30}
-            target={preset.target}
-            enableDamping
-            dampingFactor={0.08}
-            rotateSpeed={0.6}
-          />
-          <DrivetrainScene {...props} />
-        </Suspense>
-      </Canvas>
+      <WebGLErrorBoundary height={480}>
+        {isWebGLAvailable() ? (
+          <Canvas
+            key={activePreset}
+            camera={{ position: preset.position, fov: 42 }}
+            style={{ width: "100%", height: "100%" }}
+            gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+            onCreated={({ gl }) => {
+              gl.setClearColor("#0e0e0e");
+              gl.toneMapping = THREE.ACESFilmicToneMapping;
+              gl.toneMappingExposure = 1.15;
+            }}
+          >
+            <Suspense fallback={null}>
+              <OrbitControls
+                enablePan={true}
+                enableZoom={true}
+                enableRotate={true}
+                minDistance={2}
+                maxDistance={30}
+                target={preset.target}
+                enableDamping
+                dampingFactor={0.08}
+                rotateSpeed={0.6}
+              />
+              <DrivetrainScene {...props} />
+            </Suspense>
+          </Canvas>
+        ) : (
+          <div style={{
+            width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', color: '#888',
+            fontFamily: 'monospace', fontSize: 12, gap: 8,
+          }}>
+            <span style={{ color: '#ff6b6b', fontSize: 14 }}>⚠ WebGL not detected</span>
+            <span>Open in Chrome/Firefox/Edge for the 3D drivetrain view.</span>
+          </div>
+        )}
+      </WebGLErrorBoundary>
 
       {/* Bottom overlay */}
       <div

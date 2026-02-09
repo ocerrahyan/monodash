@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "wouter";
 import { type EcuConfig, getDefaultEcuConfig } from "@/lib/engineSim";
 import { sharedSim } from "@/lib/sharedSim";
-import { getAllPresets, savePreset, deletePreset, type Preset } from "@/lib/presets";
+import { getAllPresets, savePreset, deletePreset, type Preset, configToShareUrl, exportConfigToFile, importConfigFromFile, pushUndo, undo, redo, canUndo, canRedo, configFromShareUrl } from "@/lib/presets";
 import { useAiMode } from "@/lib/aiMode";
 
 type ConfigKey = keyof EcuConfig;
@@ -203,6 +203,30 @@ function getStringOptions(key: ConfigKey): string[] {
     case "ignitionCutType": return ["hard", "soft"];
     case "auxOutput1Function": return ["vtec", "fan", "boost", "nitrous", "shift_light", "off"];
     case "auxOutput2Function": return ["vtec", "fan", "boost", "nitrous", "shift_light", "off"];
+    case "canBusBaudRate": return ["250", "500", "1000"];
+    case "ecuType": return ["oem_p28", "oem_p72", "hondata_s300", "hondata_kpro", "haltech_elite", "aem_infinity", "megasquirt", "motec_m1"];
+    case "tpsType": return ["potentiometer", "hall_effect", "dual_redundant"];
+    case "mapSensorType": return ["1bar", "2bar", "3bar", "4bar", "5bar"];
+    case "iatSensorType": return ["oem_thermistor", "gm_open_element", "bosch"];
+    case "ectSensorType": return ["oem_thermistor", "aftermarket"];
+    case "crankSensorType": return ["oem_24tooth", "aftermarket_36minus1", "60minus2", "12tooth"];
+    case "camSensorType": return ["oem_1pulse", "aftermarket_4pulse"];
+    case "knockSensorType": return ["piezo_flat", "piezo_donut", "wideband_knock"];
+    case "throttleResponseCurve": return ["linear", "progressive", "aggressive", "eco"];
+    case "injectorType": return ["port_low_impedance", "port_high_impedance", "direct"];
+    case "fuelRailType": return ["oem", "high_flow", "dual_feed"];
+    case "fuelPumpType": return ["oem_in_tank", "walbro_255", "dw300", "external_surge"];
+    case "turboInletFlange": return ["T25", "T3", "T4", "T6", "V_band"];
+    case "turboExitFlange": return ["T25", "T3", "V_band", "3inch"];
+    case "turboWastegateType": return ["internal", "external_38mm", "external_44mm", "external_60mm"];
+    case "turboBearingType": return ["journal", "ball_bearing", "ceramic_ball"];
+    case "blowOffValveType": return ["none", "recirculating", "atmosphere", "dual_port"];
+    case "boostControllerType": return ["none", "manual_mbc", "electronic_solenoid", "eboost2"];
+    case "intercoolerType": return ["none", "fmic", "tmic", "water_air"];
+    case "shiftLightColor": return ["red", "blue", "green", "amber"];
+    case "fuelMapInterpolation": return ["bilinear", "bicubic"];
+    case "ignMapInterpolation": return ["bilinear", "bicubic"];
+    case "fuelMapUnits": return ["ms", "multiplier", "lambda"];
     default: return [];
   }
 }
@@ -225,6 +249,19 @@ export default function EcuPage() {
   const [saveName, setSaveName] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const [aiMode, toggleAi] = useAiMode();
+  const [shareMsg, setShareMsg] = useState("");
+
+  // Load config from share URL on mount
+  useEffect(() => {
+    const shared = configFromShareUrl();
+    if (shared) {
+      setConfig(shared);
+      sharedSim.setEcuConfig(shared);
+      setSaveMsg("Loaded shared config from URL");
+      setTimeout(() => setSaveMsg(""), 3000);
+    }
+    pushUndo(sharedSim.getEcuConfig());
+  }, []);
 
   const refreshPresets = useCallback(() => {
     setPresets(getAllPresets());
@@ -237,8 +274,41 @@ export default function EcuPage() {
         next.boostByGear = next.boostByGear.map(() => value as number);
       }
       sharedSim.setEcuConfig(next);
+      pushUndo(next);
       return next;
     });
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    const prev = undo();
+    if (prev) { setConfig(prev); sharedSim.setEcuConfig(prev); }
+  }, []);
+  const handleRedo = useCallback(() => {
+    const next = redo();
+    if (next) { setConfig(next); sharedSim.setEcuConfig(next); }
+  }, []);
+  const handleShare = useCallback(() => {
+    const url = configToShareUrl(config);
+    navigator.clipboard.writeText(url).then(() => {
+      setShareMsg("URL copied!");
+      setTimeout(() => setShareMsg(""), 2000);
+    }).catch(() => {
+      setShareMsg("Copy failed");
+      setTimeout(() => setShareMsg(""), 2000);
+    });
+  }, [config]);
+  const handleExport = useCallback(() => {
+    exportConfigToFile(config, activePreset || 'ecu-config');
+  }, [config, activePreset]);
+  const handleImport = useCallback(async () => {
+    const imported = await importConfigFromFile();
+    if (imported) {
+      setConfig(imported);
+      sharedSim.setEcuConfig(imported);
+      pushUndo(imported);
+      setSaveMsg("Config imported");
+      setTimeout(() => setSaveMsg(""), 2000);
+    }
   }, []);
 
   const handleReset = useCallback(() => {
@@ -301,6 +371,14 @@ export default function EcuPage() {
           {aiMode ? "AI ON" : "CODE"}
         </button>
         <span className="text-[10px] tracking-[0.3em] uppercase opacity-80 font-mono text-green-400">ECU TUNING</span>
+        <div className="flex items-center gap-1">
+          <button onClick={handleUndo} disabled={!canUndo()} className="text-[10px] font-mono border border-white/20 px-1.5 py-0.5 opacity-60 hover:opacity-100 disabled:opacity-20" title="Undo (Ctrl+Z)">↩</button>
+          <button onClick={handleRedo} disabled={!canRedo()} className="text-[10px] font-mono border border-white/20 px-1.5 py-0.5 opacity-60 hover:opacity-100 disabled:opacity-20" title="Redo (Ctrl+Y)">↪</button>
+          <button onClick={handleShare} className="text-[10px] font-mono border border-cyan-500/30 text-cyan-400/80 px-1.5 py-0.5" title="Copy share URL">🔗</button>
+          <button onClick={handleExport} className="text-[10px] font-mono border border-white/20 px-1.5 py-0.5 opacity-60 hover:opacity-100" title="Export JSON">⬇</button>
+          <button onClick={handleImport} className="text-[10px] font-mono border border-white/20 px-1.5 py-0.5 opacity-60 hover:opacity-100" title="Import JSON">⬆</button>
+        </div>
+        {shareMsg && <span className="text-[9px] font-mono text-cyan-400 animate-pulse">{shareMsg}</span>}
         <button
           onClick={handleReset}
           className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5"
@@ -562,6 +640,93 @@ export default function EcuPage() {
         <ParamRow label="AFR Min" configKey="widebandAfrMin" config={config} onChange={handleChange} unit="afr" step={0.5} min={8} testId="ecu-wb-min" />
         <ParamRow label="AFR Max" configKey="widebandAfrMax" config={config} onChange={handleChange} unit="afr" step={0.5} min={14} testId="ecu-wb-max" />
         <ParamRow label="Cal Offset" configKey="widebandCalOffset" config={config} onChange={handleChange} unit="afr" step={0.1} testId="ecu-wb-offset" />
+
+        <SectionHeader title="CAN Bus / Communications" />
+        <ParamRow label="CAN Bus Enabled" configKey="canBusEnabled" config={config} onChange={handleChange} testId="ecu-can-en" />
+        <ParamRow label="Baud Rate" configKey="canBusBaudRate" config={config} onChange={handleChange} unit="kbps" testId="ecu-can-baud" />
+        <ParamRow label="Termination" configKey="canBusTermination" config={config} onChange={handleChange} testId="ecu-can-term" />
+        <ParamRow label="Stream Rate" configKey="canBusStreamRateHz" config={config} onChange={handleChange} unit="Hz" step={10} min={10} testId="ecu-can-rate" />
+        <ParamRow label="RPM ID" configKey="canBusRpmId" config={config} onChange={handleChange} unit="hex" step={1} min={0} testId="ecu-can-rpm-id" />
+        <ParamRow label="TPS ID" configKey="canBusTpsId" config={config} onChange={handleChange} unit="hex" step={1} min={0} testId="ecu-can-tps-id" />
+        <ParamRow label="VSS ID" configKey="canBusVssId" config={config} onChange={handleChange} unit="hex" step={1} min={0} testId="ecu-can-vss-id" />
+        <ParamRow label="AFR ID" configKey="canBusAfrId" config={config} onChange={handleChange} unit="hex" step={1} min={0} testId="ecu-can-afr-id" />
+        <ParamRow label="Boost ID" configKey="canBusBoostId" config={config} onChange={handleChange} unit="hex" step={1} min={0} testId="ecu-can-boost-id" />
+        <ParamRow label="Temp ID" configKey="canBusTempId" config={config} onChange={handleChange} unit="hex" step={1} min={0} testId="ecu-can-temp-id" />
+
+        <SectionHeader title="Emissions / OBD-II" />
+        <ParamRow label="Catalytic Converter" configKey="catalyticConverterEnabled" config={config} onChange={handleChange} testId="ecu-cat-en" />
+        <ParamRow label="Cat Light-Off Temp" configKey="catLightOffTempF" config={config} onChange={handleChange} unit="°F" step={25} min={400} testId="ecu-cat-lightoff" />
+        <ParamRow label="Secondary Air Inj" configKey="secondaryAirInjEnabled" config={config} onChange={handleChange} testId="ecu-air-inj" />
+        <ParamRow label="EGR Enabled" configKey="egrEnabled" config={config} onChange={handleChange} testId="ecu-egr-en" />
+        <ParamRow label="EGR Duty %" configKey="egrDutyPct" config={config} onChange={handleChange} unit="%" step={5} min={0} testId="ecu-egr-duty" />
+        <ParamRow label="EVAP Purge" configKey="evapPurgeEnabled" config={config} onChange={handleChange} testId="ecu-evap-purge" />
+        <ParamRow label="Purge Duty" configKey="evapPurgeDutyCyclePct" config={config} onChange={handleChange} unit="%" step={5} min={0} testId="ecu-evap-duty" />
+        <ParamRow label="O2 Heater" configKey="o2HeaterEnabled" config={config} onChange={handleChange} testId="ecu-o2-heater" />
+        <ParamRow label="MIL Clear" configKey="milClearEnabled" config={config} onChange={handleChange} testId="ecu-mil-clear" />
+
+        <SectionHeader title="Engine Management / Sensors" />
+        <ParamRow label="ECU Type" configKey="ecuType" config={config} onChange={handleChange} testId="ecu-ecu-type" />
+        <ParamRow label="TPS Type" configKey="tpsType" config={config} onChange={handleChange} testId="ecu-tps-type" />
+        <ParamRow label="MAP Sensor" configKey="mapSensorType" config={config} onChange={handleChange} testId="ecu-map-sensor" />
+        <ParamRow label="IAT Sensor" configKey="iatSensorType" config={config} onChange={handleChange} testId="ecu-iat-sensor" />
+        <ParamRow label="ECT Sensor" configKey="ectSensorType" config={config} onChange={handleChange} testId="ecu-ect-sensor" />
+        <ParamRow label="Crank Sensor" configKey="crankSensorType" config={config} onChange={handleChange} testId="ecu-crank-sensor" />
+        <ParamRow label="Cam Sensor" configKey="camSensorType" config={config} onChange={handleChange} testId="ecu-cam-sensor" />
+        <ParamRow label="Knock Sensor" configKey="knockSensorType" config={config} onChange={handleChange} testId="ecu-knock-sensor-type" />
+        <ParamRow label="Fuel Press Sensor" configKey="fuelPressureSensorEnabled" config={config} onChange={handleChange} testId="ecu-fuel-press-sensor" />
+        <ParamRow label="Ethanol Sensor" configKey="ethAnalyzerEnabled" config={config} onChange={handleChange} testId="ecu-eth-analyzer" />
+
+        <SectionHeader title="Electronic Throttle" />
+        <ParamRow label="E-Throttle Enabled" configKey="electronicThrottleEnabled" config={config} onChange={handleChange} testId="ecu-e-throttle" />
+        <ParamRow label="Response Curve" configKey="throttleResponseCurve" config={config} onChange={handleChange} testId="ecu-throttle-curve" />
+        <ParamRow label="Downshift Blip" configKey="throttleBlipOnDownshift" config={config} onChange={handleChange} testId="ecu-blip" />
+        <ParamRow label="Idle Creep" configKey="throttleIdleCreepPct" config={config} onChange={handleChange} unit="%" step={1} min={0} testId="ecu-idle-creep" />
+        <ParamRow label="Cruise Control" configKey="cruiseControlEnabled" config={config} onChange={handleChange} testId="ecu-cruise-en" />
+        <ParamRow label="Cruise Max MPH" configKey="cruiseControlMaxMph" config={config} onChange={handleChange} unit="mph" step={5} min={50} testId="ecu-cruise-max" />
+
+        <SectionHeader title="Fuel Injection Extended" />
+        <ParamRow label="Injector Type" configKey="injectorType" config={config} onChange={handleChange} testId="ecu-inj-type" />
+        <ParamRow label="Injector Count" configKey="injectorCount" config={config} onChange={handleChange} unit="#" step={1} min={1} testId="ecu-inj-count" />
+        <ParamRow label="Flow @ 43 PSI" configKey="injectorFlowAt43Psi" config={config} onChange={handleChange} unit="cc" step={10} min={100} testId="ecu-inj-flow" />
+        <ParamRow label="Max Imbalance" configKey="injectorBalanceMaxPct" config={config} onChange={handleChange} unit="%" step={1} min={1} testId="ecu-inj-balance" />
+        <ParamRow label="Fuel Rail" configKey="fuelRailType" config={config} onChange={handleChange} testId="ecu-fuel-rail" />
+        <ParamRow label="Fuel Filter" configKey="fuelFilterMicron" config={config} onChange={handleChange} unit="μm" step={5} min={5} testId="ecu-fuel-filter" />
+        <ParamRow label="Fuel Pump" configKey="fuelPumpType" config={config} onChange={handleChange} testId="ecu-fuel-pump-type" />
+        <ParamRow label="Pump Flow" configKey="fuelPumpFlowLph" config={config} onChange={handleChange} unit="LPH" step={10} min={50} testId="ecu-pump-flow" />
+        <ParamRow label="Regulator Base PSI" configKey="fuelRegulatorBasePsi" config={config} onChange={handleChange} unit="PSI" step={1} min={30} testId="ecu-reg-base" />
+        <ParamRow label="Rise Ratio" configKey="fuelRegulatorRiseRatio" config={config} onChange={handleChange} unit=":1" step={0.1} min={0.5} testId="ecu-reg-rise" />
+
+        <SectionHeader title="Turbo Extended" />
+        <ParamRow label="Turbo Frame" configKey="turboFrameSize" config={config} onChange={handleChange} testId="ecu-turbo-frame" />
+        <ParamRow label="Comp Trim" configKey="turboCompressorTrim" config={config} onChange={handleChange} unit="#" step={2} min={40} testId="ecu-comp-trim" />
+        <ParamRow label="Turbine Trim" configKey="turboTurbineTrim" config={config} onChange={handleChange} unit="#" step={2} min={50} testId="ecu-turb-trim" />
+        <ParamRow label="Comp Inducer" configKey="turboCompressorInducerMm" config={config} onChange={handleChange} unit="mm" step={1} min={30} testId="ecu-comp-inducer" />
+        <ParamRow label="Comp Exducer" configKey="turboCompressorExducerMm" config={config} onChange={handleChange} unit="mm" step={1} min={40} testId="ecu-comp-exducer" />
+        <ParamRow label="Inlet Flange" configKey="turboInletFlange" config={config} onChange={handleChange} testId="ecu-turbo-inlet" />
+        <ParamRow label="Exit Flange" configKey="turboExitFlange" config={config} onChange={handleChange} testId="ecu-turbo-exit" />
+        <ParamRow label="Wastegate Type" configKey="turboWastegateType" config={config} onChange={handleChange} testId="ecu-wg-type" />
+        <ParamRow label="WG Spring PSI" configKey="turboWastegateSpringPsi" config={config} onChange={handleChange} unit="PSI" step={1} min={3} testId="ecu-wg-spring" />
+        <ParamRow label="Bearing Type" configKey="turboBearingType" config={config} onChange={handleChange} testId="ecu-turbo-bearing" />
+        <ParamRow label="Housing A/R (Turb)" configKey="turboHousingARTurbine" config={config} onChange={handleChange} unit="A/R" step={0.02} min={0.3} testId="ecu-turbo-ar-turb" />
+        <ParamRow label="Housing A/R (Comp)" configKey="turboHousingARCompressor" config={config} onChange={handleChange} unit="A/R" step={0.02} min={0.3} testId="ecu-turbo-ar-comp" />
+        <ParamRow label="BOV Type" configKey="blowOffValveType" config={config} onChange={handleChange} testId="ecu-bov-type" />
+        <ParamRow label="Boost Controller" configKey="boostControllerType" config={config} onChange={handleChange} testId="ecu-boost-ctrl" />
+        <ParamRow label="IC Type" configKey="intercoolerType" config={config} onChange={handleChange} testId="ecu-ic-type" />
+        <ParamRow label="IC Piping Dia" configKey="intercoolerPipingDiaMm" config={config} onChange={handleChange} unit="mm" step={5} min={38} testId="ecu-ic-pipe" />
+
+        <SectionHeader title="Dash / Gauges" />
+        <ParamRow label="Tach Range" configKey="tachometerRange" config={config} onChange={handleChange} unit="RPM" step={1000} min={6000} testId="ecu-tach-range" />
+        <ParamRow label="Speedo Range" configKey="speedometerRange" config={config} onChange={handleChange} unit="MPH" step={10} min={100} testId="ecu-speedo-range" />
+        <ParamRow label="Shift Light" configKey="shiftLightEnabled" config={config} onChange={handleChange} testId="ecu-shift-light-en" />
+        <ParamRow label="Shift Light Color" configKey="shiftLightColor" config={config} onChange={handleChange} testId="ecu-shift-light-color" />
+        <ParamRow label="Boost Gauge" configKey="boostGaugeEnabled" config={config} onChange={handleChange} testId="ecu-boost-gauge" />
+        <ParamRow label="AFR Gauge" configKey="afrGaugeEnabled" config={config} onChange={handleChange} testId="ecu-afr-gauge" />
+        <ParamRow label="Oil Press Gauge" configKey="oilPressGaugeEnabled" config={config} onChange={handleChange} testId="ecu-oil-press-gauge" />
+        <ParamRow label="Oil Temp Gauge" configKey="oilTempGaugeEnabled" config={config} onChange={handleChange} testId="ecu-oil-temp-gauge" />
+        <ParamRow label="EGT Gauge" configKey="egtGaugeEnabled" config={config} onChange={handleChange} testId="ecu-egt-gauge" />
+        <ParamRow label="Fuel Press Gauge" configKey="fuelPressGaugeEnabled" config={config} onChange={handleChange} testId="ecu-fuel-press-gauge" />
+        <ParamRow label="GPS Speed" configKey="gpsSpeedEnabled" config={config} onChange={handleChange} testId="ecu-gps-speed" />
+        <ParamRow label="Data Log Overlay" configKey="dataLogOverlayEnabled" config={config} onChange={handleChange} testId="ecu-log-overlay" />
 
         {/* ── VEHICLE / DRIVETRAIN CONFIG LINK ── */}
         <div className="flex items-center gap-2 pt-6 pb-2 px-2">

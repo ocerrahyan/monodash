@@ -278,3 +278,104 @@ export function getAllPresets(): Preset[] {
   const custom = saved.filter((p) => !builtIn.some((b) => b.name === p.name));
   return [...merged, ...custom];
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SHARE VIA URL  (compress config to base64 URL parameter)
+// ═══════════════════════════════════════════════════════════════════════════
+export function configToShareUrl(config: EcuConfig): string {
+  try {
+    const json = JSON.stringify(config);
+    const encoded = btoa(unescape(encodeURIComponent(json)));
+    const url = new URL(window.location.href);
+    url.searchParams.set('cfg', encoded);
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return window.location.href;
+  }
+}
+
+export function configFromShareUrl(): EcuConfig | null {
+  try {
+    const url = new URL(window.location.href);
+    const encoded = url.searchParams.get('cfg');
+    if (!encoded) return null;
+    const json = decodeURIComponent(escape(atob(encoded)));
+    const config = JSON.parse(json) as EcuConfig;
+    // Clean up URL after loading
+    url.searchParams.delete('cfg');
+    window.history.replaceState({}, '', url.toString());
+    return config;
+  } catch {
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXPORT / IMPORT (JSON file download/upload)
+// ═══════════════════════════════════════════════════════════════════════════
+export function exportConfigToFile(config: EcuConfig, name: string = 'ecu-config'): void {
+  const json = JSON.stringify(config, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${name.replace(/[^a-zA-Z0-9-_]/g, '_')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function importConfigFromFile(): Promise<EcuConfig | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async () => {
+      try {
+        const file = input.files?.[0];
+        if (!file) { resolve(null); return; }
+        const text = await file.text();
+        resolve(JSON.parse(text) as EcuConfig);
+      } catch {
+        resolve(null);
+      }
+    };
+    input.click();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UNDO HISTORY  (circular buffer of last 50 config states)
+// ═══════════════════════════════════════════════════════════════════════════
+const UNDO_MAX = 50;
+let undoStack: EcuConfig[] = [];
+let undoIndex = -1;
+
+export function pushUndo(config: EcuConfig): void {
+  // Trim forward history if we're not at the tip
+  if (undoIndex < undoStack.length - 1) {
+    undoStack = undoStack.slice(0, undoIndex + 1);
+  }
+  undoStack.push({ ...config });
+  if (undoStack.length > UNDO_MAX) undoStack.shift();
+  undoIndex = undoStack.length - 1;
+}
+
+export function undo(): EcuConfig | null {
+  if (undoIndex > 0) {
+    undoIndex--;
+    return { ...undoStack[undoIndex] };
+  }
+  return null;
+}
+
+export function redo(): EcuConfig | null {
+  if (undoIndex < undoStack.length - 1) {
+    undoIndex++;
+    return { ...undoStack[undoIndex] };
+  }
+  return null;
+}
+
+export function canUndo(): boolean { return undoIndex > 0; }
+export function canRedo(): boolean { return undoIndex < undoStack.length - 1; }

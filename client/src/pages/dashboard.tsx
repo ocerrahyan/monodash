@@ -75,9 +75,11 @@ interface GaugeProps {
   testId: string;
   highlight?: boolean;
   gaugeId: string;
+  customColor?: string;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-function Gauge({ label, value, unit, testId, highlight, gaugeId }: GaugeProps) {
+function Gauge({ label, value, unit, testId, highlight, gaugeId, customColor, onContextMenu }: GaugeProps) {
   const { draggedId, setDraggedId, onDrop } = useDrag();
   const [isDragOver, setIsDragOver] = useState(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -184,6 +186,8 @@ function Gauge({ label, value, unit, testId, highlight, gaugeId }: GaugeProps) {
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onContextMenu={onContextMenu}
+      style={customColor ? { color: customColor } : undefined}
     >
       <span className="text-[9px] tracking-wider uppercase opacity-70 leading-tight text-center font-mono">{label}</span>
       <span className={`text-[18px] font-mono font-bold leading-tight tabular-nums ${highlight ? "opacity-100" : ""}`} data-testid={`value-${testId}`}>{value}</span>
@@ -1202,6 +1206,78 @@ export default function Dashboard() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Right-click context menu for gauge customization
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; gaugeId: string } | null>(null);
+  const [hiddenGauges, setHiddenGauges] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('hiddenGauges');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+  const [gaugeColors, setGaugeColors] = useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem('gaugeColors');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  // Close context menu on click outside
+  useEffect(() => {
+    const close = () => setContextMenu(null);
+    if (contextMenu) {
+      window.addEventListener('click', close);
+      window.addEventListener('contextmenu', close);
+      return () => { window.removeEventListener('click', close); window.removeEventListener('contextmenu', close); };
+    }
+  }, [contextMenu]);
+
+  const handleGaugeContextMenu = useCallback((e: React.MouseEvent, gaugeId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, gaugeId });
+  }, []);
+
+  const hideGauge = useCallback((id: string) => {
+    setHiddenGauges(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      localStorage.setItem('hiddenGauges', JSON.stringify(Array.from(next)));
+      return next;
+    });
+    setContextMenu(null);
+  }, []);
+
+  const showAllGauges = useCallback(() => {
+    setHiddenGauges(new Set());
+    localStorage.removeItem('hiddenGauges');
+    setContextMenu(null);
+  }, []);
+
+  const setGaugeColor = useCallback((id: string, color: string) => {
+    setGaugeColors(prev => {
+      const next = { ...prev, [id]: color };
+      localStorage.setItem('gaugeColors', JSON.stringify(next));
+      return next;
+    });
+    setContextMenu(null);
+  }, []);
+
+  const resetGaugeColor = useCallback((id: string) => {
+    setGaugeColors(prev => {
+      const next = { ...prev };
+      delete next[id];
+      localStorage.setItem('gaugeColors', JSON.stringify(next));
+      return next;
+    });
+    setContextMenu(null);
+  }, []);
+
+  const resetAllGauges = useCallback(() => {
+    setGaugeOrder([]);
+    setHiddenGauges(new Set());
+    setGaugeColors({});
+    localStorage.removeItem('gaugeOrder');
+    localStorage.removeItem('hiddenGauges');
+    localStorage.removeItem('gaugeColors');
+    setContextMenu(null);
+  }, []);
+
   const handleDrop = useCallback((targetId: string) => {
     if (!draggedId || draggedId === targetId) return;
     
@@ -1518,6 +1594,8 @@ export default function Dashboard() {
               currentGearRatio={state.currentGearRatio}
               slipPct={state.tireSlipPercent}
               drivetrainType={state.drivetrainType}
+              accelerationG={state.accelerationG}
+              throttle={state.throttlePosition}
             />
           </div>
 
@@ -1615,6 +1693,9 @@ export default function Dashboard() {
               return order.map((id) => {
                 const config = gaugeConfigs[id];
                 if (!config) return null;
+
+                // Skip hidden gauges
+                if (hiddenGauges.has(id)) return null;
                 
                 const elements: React.ReactNode[] = [];
                 
@@ -1644,6 +1725,8 @@ export default function Dashboard() {
                       unit={config.unit}
                       testId={config.testId}
                       highlight={config.highlight}
+                      customColor={gaugeColors[id]}
+                      onContextMenu={(e) => handleGaugeContextMenu(e, id)}
                     />
                   );
                 }
@@ -1739,6 +1822,66 @@ export default function Dashboard() {
           </Button>
         )}
       </div>
+
+      {/* ── RIGHT-CLICK GAUGE CONTEXT MENU ── */}
+      {contextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            zIndex: 9999,
+            minWidth: 180,
+          }}
+          className="bg-[#1a1a2e] border border-white/20 rounded shadow-xl font-mono text-[10px]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-3 py-1.5 border-b border-white/10 text-white/50 uppercase tracking-wider text-[8px]">
+            Gauge: {contextMenu.gaugeId}
+          </div>
+          <button
+            className="w-full text-left px-3 py-1.5 hover:bg-white/10 text-white/80"
+            onClick={() => hideGauge(contextMenu.gaugeId)}
+          >
+            🚫 Hide this gauge
+          </button>
+          <div className="px-3 py-1 border-t border-white/5">
+            <span className="text-white/40 text-[8px] uppercase">Color</span>
+            <div className="flex gap-1 mt-1 mb-1">
+              {['#ffffff', '#a3e635', '#ff6b6b', '#60a5fa', '#f59e0b', '#c084fc', '#22d3ee', '#fb923c'].map(c => (
+                <button
+                  key={c}
+                  className="w-4 h-4 rounded-full border border-white/20 hover:scale-125 transition-transform"
+                  style={{ background: c }}
+                  onClick={() => setGaugeColor(contextMenu.gaugeId, c)}
+                />
+              ))}
+            </div>
+          </div>
+          {gaugeColors[contextMenu.gaugeId] && (
+            <button
+              className="w-full text-left px-3 py-1.5 hover:bg-white/10 text-white/60 border-t border-white/5"
+              onClick={() => resetGaugeColor(contextMenu.gaugeId)}
+            >
+              ↩ Reset color
+            </button>
+          )}
+          {hiddenGauges.size > 0 && (
+            <button
+              className="w-full text-left px-3 py-1.5 hover:bg-white/10 text-green-400/80 border-t border-white/5"
+              onClick={showAllGauges}
+            >
+              👁 Show all hidden ({hiddenGauges.size})
+            </button>
+          )}
+          <button
+            className="w-full text-left px-3 py-1.5 hover:bg-white/10 text-red-400/60 border-t border-white/5"
+            onClick={resetAllGauges}
+          >
+            ⟳ Reset all gauges
+          </button>
+        </div>
+      )}
     </div>
   );
 }

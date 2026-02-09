@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "wouter";
 import { type EcuConfig, getDefaultEcuConfig } from "@/lib/engineSim";
 import { sharedSim } from "@/lib/sharedSim";
-import { getAllPresets, savePreset, deletePreset, type Preset } from "@/lib/presets";
+import { getAllPresets, savePreset, deletePreset, type Preset, configToShareUrl, exportConfigToFile, importConfigFromFile, pushUndo, undo, redo, canUndo, canRedo } from "@/lib/presets";
 
 type ConfigKey = keyof EcuConfig;
 
@@ -180,6 +180,57 @@ function getStringOptions(key: ConfigKey): string[] {
     case "rearDiffType": return ["open", "lsd", "locked"];
     case "centerDiffType": return ["open", "viscous", "torsen", "locked"];
     case "brakePadType": return ["stock", "sport", "race", "carbon"];
+    case "pistonType": return ["cast", "hypereutectic", "forged"];
+    case "crankshaftType": return ["cast", "forged", "billet"];
+    case "oilGrade": return ["0w20", "5w30", "5w40", "10w30", "10w40", "15w50"];
+    case "timingChainType": return ["chain", "belt", "gear"];
+    case "intakeType": return ["stock", "short_ram", "cold_air", "velocity_stack", "itb"];
+    case "intakeFilterType": return ["paper", "oiled_cotton", "foam", "mesh"];
+    case "throttleBodyType": return ["single", "dual", "itb"];
+    case "intakeManifoldType": return ["stock", "ported", "aftermarket", "custom"];
+    case "exhaustHeaderType": return ["stock_manifold", "4_1_header", "4_2_1_header", "equal_length"];
+    case "exhaustMufflerType": return ["stock", "performance", "straight_through", "delete"];
+    case "exhaustCatbackType": return ["single", "dual"];
+    case "radiatorType": return ["stock", "aluminum_2row", "aluminum_3row", "half_size"];
+    case "coolantType": return ["water", "green", "red_oat", "waterless"];
+    case "waterPumpType": return ["mechanical", "electric"];
+    case "transmissionType": return ["manual", "auto_torqueconv", "sequential", "dct"];
+    case "clutchType": return ["oem_organic", "stage1_organic", "stage2_kevlar", "stage3_cerametallic", "stage4_puck", "twin_disc"];
+    case "flywheelType": return ["oem_dual_mass", "oem_single", "lightweight_chromoly", "aluminum"];
+    case "synchronizerType": return ["brass", "carbon", "dog_engagement"];
+    case "transFluidType": return ["oem_mtf", "redline_mtl", "amsoil_mtf", "gl4_75w90"];
+    case "shifterCableBushingType": return ["oem_rubber", "polyurethane", "spherical"];
+    case "wheelBoltPattern": return ["4x100", "4x114", "5x114"];
+    case "wheelMaterialType": return ["steel", "alloy_cast", "alloy_forged", "carbon"];
+    case "spareTireType": return ["full_size", "compact", "none"];
+    case "brakeBoosterType": return ["vacuum", "hydraulic", "none"];
+    case "brakeLineType": return ["rubber", "stainless_braided", "hard_line"];
+    case "brakeFluidType": return ["dot3", "dot4", "dot5_1", "racing"];
+    case "parkingBrakeType": return ["drum_in_hat", "caliper_ebrake", "hydraulic"];
+    case "frontRotorType": return ["solid", "vented", "drilled", "slotted", "drilled_slotted"];
+    case "rearRotorType": return ["solid", "drum", "vented"];
+    case "rollCageType": return ["none", "harness_bar", "4_point", "6_point", "10_point"];
+    case "harnessType": return ["oem_3point", "4_point", "5_point", "6_point"];
+    case "fireExtinguisherType": return ["none", "handheld", "plumbed"];
+    case "fuelCellType": return ["oem_tank", "fia_cell_5gal", "fia_cell_10gal", "fia_cell_15gal"];
+    case "chassisType": return ["unibody", "welded_cage", "tube_frame"];
+    case "hoodType": return ["oem_steel", "aluminum", "carbon", "fiberglass"];
+    case "trunkType": return ["oem_steel", "carbon", "fiberglass", "delete"];
+    case "frontBumperType": return ["oem", "delete", "lightweight_frp", "carbon"];
+    case "rearBumperType": return ["oem", "delete", "lightweight_frp", "carbon"];
+    case "fenderType": return ["oem", "rolled", "pulled", "wide_body"];
+    case "windowType": return ["oem_glass", "polycarbonate", "lexan"];
+    case "windshieldType": return ["oem", "lightweight"];
+    case "ignitionCoilType": return ["oem_distributor", "cop", "cnp", "msd_external"];
+    case "sparkPlugType": return ["copper", "platinum", "iridium"];
+    case "wiringHarnessType": return ["oem", "mil_spec", "budget_race"];
+    case "mainRelayType": return ["oem", "aftermarket"];
+    case "frontStrutTopMountType": return ["oem_rubber", "pillow_ball", "spherical"];
+    case "rearTopMountType": return ["oem_rubber", "pillow_ball", "spherical"];
+    case "sideSkirtType": return ["none", "oem", "aero"];
+    case "rearWingType": return ["none", "lip", "duckbill", "gt_wing", "swan_neck"];
+    case "frontSplitterMaterialType": return ["abs", "carbon", "aluminum"];
+    case "interiorColor": return ["black", "gray"];
     default: return [];
   }
 }
@@ -234,9 +285,64 @@ export default function VehiclePage() {
   const handleChange = useCallback((key: ConfigKey, value: any) => {
     setConfig((prev) => {
       const next = { ...prev, [key]: value };
+
+      // ── AWD auto-population ──────────────────────────────────────
+      // When drivetrain type changes, auto-set sensible defaults for the
+      // newly-relevant subsystems so the user doesn't start with dead values.
+      if (key === 'drivetrainType') {
+        const dt = value as string;
+        if (dt === 'AWD') {
+          // Honda CRV / AWD swap defaults
+          next.rearDiffType = prev.rearDiffType === 'open' ? 'viscous' as any : prev.rearDiffType;
+          next.centerDiffType = 'viscous' as any;
+          next.awdFrontBias = 0.6;
+          next.drivetrainLossPct = 18;  // AWD has ~18% loss
+        } else if (dt === 'RWD') {
+          next.rearDiffType = prev.rearDiffType === 'open' ? 'lsd' as any : prev.rearDiffType;
+          next.drivetrainLossPct = 15;
+        } else {
+          // FWD defaults
+          next.drivetrainLossPct = 12;
+        }
+      }
+
       sharedSim.setEcuConfig(next);
+      pushUndo(next);
       return next;
     });
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    const prev = undo();
+    if (prev) { setConfig(prev); sharedSim.setEcuConfig(prev); }
+  }, []);
+  const handleRedo = useCallback(() => {
+    const next = redo();
+    if (next) { setConfig(next); sharedSim.setEcuConfig(next); }
+  }, []);
+  const [shareMsg, setShareMsg] = useState("");
+  const handleShare = useCallback(() => {
+    const url = configToShareUrl(config);
+    navigator.clipboard.writeText(url).then(() => {
+      setShareMsg("URL copied!");
+      setTimeout(() => setShareMsg(""), 2000);
+    }).catch(() => {
+      setShareMsg("Copy failed");
+      setTimeout(() => setShareMsg(""), 2000);
+    });
+  }, [config]);
+  const handleExport = useCallback(() => {
+    exportConfigToFile(config, 'vehicle-config');
+  }, [config]);
+  const handleImport = useCallback(async () => {
+    const imported = await importConfigFromFile();
+    if (imported) {
+      setConfig(imported);
+      sharedSim.setEcuConfig(imported);
+      pushUndo(imported);
+      setSaveMsg("Config imported");
+      setTimeout(() => setSaveMsg(""), 2000);
+    }
   }, []);
 
   const handleReset = useCallback(() => {
@@ -277,6 +383,14 @@ export default function VehiclePage() {
         <Link href="/" className="text-[10px] tracking-wider uppercase opacity-70 font-mono">GAUGES</Link>
         <Link href="/ecu" className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5">ECU</Link>
         <span className="text-[10px] tracking-[0.3em] uppercase opacity-80 font-mono text-orange-400">VEHICLE</span>
+        <div className="flex items-center gap-1">
+          <button onClick={handleUndo} disabled={!canUndo()} className="text-[10px] font-mono border border-white/20 px-1.5 py-0.5 opacity-60 hover:opacity-100 disabled:opacity-20" title="Undo">↩</button>
+          <button onClick={handleRedo} disabled={!canRedo()} className="text-[10px] font-mono border border-white/20 px-1.5 py-0.5 opacity-60 hover:opacity-100 disabled:opacity-20" title="Redo">↪</button>
+          <button onClick={handleShare} className="text-[10px] font-mono border border-cyan-500/30 text-cyan-400/80 px-1.5 py-0.5" title="Copy share URL">🔗</button>
+          <button onClick={handleExport} className="text-[10px] font-mono border border-white/20 px-1.5 py-0.5 opacity-60 hover:opacity-100" title="Export JSON">⬇</button>
+          <button onClick={handleImport} className="text-[10px] font-mono border border-white/20 px-1.5 py-0.5 opacity-60 hover:opacity-100" title="Import JSON">⬆</button>
+        </div>
+        {shareMsg && <span className="text-[9px] font-mono text-cyan-400 animate-pulse">{shareMsg}</span>}
         <button onClick={handleReset} className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5">DEFAULTS</button>
       </div>
 
@@ -487,6 +601,249 @@ export default function VehiclePage() {
           <ParamRow label="Steering Ratio" configKey="steeringRatio" config={config} onChange={handleChange} unit=":1" step={0.5} min={10} testId="veh-steer-ratio" />
           <ParamRow label="Max Lock Angle" configKey="steeringLockDeg" config={config} onChange={handleChange} unit="°" step={1} min={20} testId="veh-steer-lock" />
           <ParamRow label="Power Steering" configKey="powerSteeringEnabled" config={config} onChange={handleChange} testId="veh-power-steer" />
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── ENGINE INTERNALS (B16A2) ─────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Engine Internals (B16A2)" color="#ef4444" defaultOpen={false}>
+          <ParamRow label="Bore" configKey="boreMm" config={config} onChange={handleChange} unit="mm" step={0.5} min={70} testId="veh-bore" />
+          <ParamRow label="Stroke" configKey="strokeMm" config={config} onChange={handleChange} unit="mm" step={0.5} min={60} testId="veh-stroke" />
+          <ParamRow label="Displacement" configKey="displacementCc" config={config} onChange={handleChange} unit="cc" step={10} min={500} testId="veh-displacement" />
+          <ParamRow label="Cylinders" configKey="numCylinders" config={config} onChange={handleChange} unit="#" step={1} min={1} testId="veh-num-cyl" />
+          <ParamRow label="Rod Length" configKey="connectingRodLenMm" config={config} onChange={handleChange} unit="mm" step={1} min={100} testId="veh-rod-len" />
+          <ParamRow label="Piston Type" configKey="pistonType" config={config} onChange={handleChange} testId="veh-piston-type" />
+          <ParamRow label="Ring Gap" configKey="pistonRingGapMm" config={config} onChange={handleChange} unit="mm" step={0.01} min={0.1} testId="veh-ring-gap" />
+          <ParamRow label="Crank Type" configKey="crankshaftType" config={config} onChange={handleChange} testId="veh-crank-type" />
+          <ParamRow label="Bearing Clearance" configKey="bearingClearanceMm" config={config} onChange={handleChange} unit="mm" step={0.005} min={0.01} testId="veh-bearing-clr" />
+          <ParamRow label="Oil Grade" configKey="oilGrade" config={config} onChange={handleChange} testId="veh-oil-grade" />
+          <ParamRow label="Head Gasket Thick" configKey="headGasketThickMm" config={config} onChange={handleChange} unit="mm" step={0.1} min={0.3} testId="veh-hg-thick" />
+          <ParamRow label="HG Bore Dia" configKey="headGasketBoreDiaMm" config={config} onChange={handleChange} unit="mm" step={0.5} min={75} testId="veh-hg-bore" />
+          <ParamRow label="Deck Height" configKey="deckHeightMm" config={config} onChange={handleChange} unit="mm" step={0.1} min={180} testId="veh-deck-ht" />
+          <ParamRow label="Chamber CC" configKey="combustionChamberCc" config={config} onChange={handleChange} unit="cc" step={0.5} min={30} testId="veh-chamber-cc" />
+          <ParamRow label="Valves/Cyl" configKey="valvesPerCylinder" config={config} onChange={handleChange} unit="#" step={1} min={2} testId="veh-valves-cyl" />
+          <ParamRow label="Intake Valve Dia" configKey="intakeValveDiaMm" config={config} onChange={handleChange} unit="mm" step={0.5} min={25} testId="veh-intake-valve" />
+          <ParamRow label="Exhaust Valve Dia" configKey="exhaustValveDiaMm" config={config} onChange={handleChange} unit="mm" step={0.5} min={20} testId="veh-exhaust-valve" />
+          <ParamRow label="Valve Stem Dia" configKey="valveStemDiaMm" config={config} onChange={handleChange} unit="mm" step={0.1} min={4} testId="veh-valve-stem" />
+          <ParamRow label="Valve Spring Pressure" configKey="valveSpringPressureLb" config={config} onChange={handleChange} unit="lb" step={2} min={20} testId="veh-valve-spring" />
+          <ParamRow label="Rocker Ratio" configKey="rockerArmRatio" config={config} onChange={handleChange} unit=":1" step={0.05} min={0.8} testId="veh-rocker-ratio" />
+          <ParamRow label="Timing Drive" configKey="timingChainType" config={config} onChange={handleChange} testId="veh-timing-type" />
+          <ParamRow label="Balance Shaft" configKey="balanceShaftEnabled" config={config} onChange={handleChange} testId="veh-balance-shaft" />
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── INTAKE SYSTEM ────────────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Intake System" color="#ef4444" defaultOpen={false}>
+          <ParamRow label="Intake Type" configKey="intakeType" config={config} onChange={handleChange} testId="veh-intake-type" />
+          <ParamRow label="Filter Type" configKey="intakeFilterType" config={config} onChange={handleChange} testId="veh-filter-type" />
+          <ParamRow label="Pipe Diameter" configKey="intakePipeDiaMm" config={config} onChange={handleChange} unit="mm" step={2} min={38} testId="veh-intake-pipe" />
+          <ParamRow label="Throttle Body Dia" configKey="throttleBodyDiaMm" config={config} onChange={handleChange} unit="mm" step={2} min={50} testId="veh-tb-dia" />
+          <ParamRow label="TB Type" configKey="throttleBodyType" config={config} onChange={handleChange} testId="veh-tb-type" />
+          <ParamRow label="Manifold Type" configKey="intakeManifoldType" config={config} onChange={handleChange} testId="veh-manifold-type" />
+          <ParamRow label="Runner Length" configKey="intakeManifoldRunnerLenMm" config={config} onChange={handleChange} unit="mm" step={10} min={100} testId="veh-runner-len" />
+          <ParamRow label="Plenum Volume" configKey="intakeManifoldPlenumVolCc" config={config} onChange={handleChange} unit="cc" step={100} min={500} testId="veh-plenum-vol" />
+          <ParamRow label="Resonator" configKey="intakeResonatorEnabled" config={config} onChange={handleChange} testId="veh-intake-resonator" />
+          <ParamRow label="IAC Bypass" configKey="idleAirBypassEnabled" config={config} onChange={handleChange} testId="veh-iac-bypass" />
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── EXHAUST SYSTEM ───────────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Exhaust System" color="#ef4444" defaultOpen={false}>
+          <ParamRow label="Header Type" configKey="exhaustHeaderType" config={config} onChange={handleChange} testId="veh-header-type" />
+          <ParamRow label="Primary Dia" configKey="exhaustHeaderPrimaryDiaMm" config={config} onChange={handleChange} unit="mm" step={2} min={30} testId="veh-header-primary" />
+          <ParamRow label="Primary Length" configKey="exhaustHeaderPrimaryLenMm" config={config} onChange={handleChange} unit="mm" step={10} min={200} testId="veh-header-pri-len" />
+          <ParamRow label="Collector Dia" configKey="exhaustHeaderCollectorDiaMm" config={config} onChange={handleChange} unit="mm" step={2} min={38} testId="veh-header-coll" />
+          <ParamRow label="Exhaust Pipe Dia" configKey="exhaustPipeDiaMm" config={config} onChange={handleChange} unit="mm" step={2} min={38} testId="veh-exhaust-pipe" />
+          <ParamRow label="Muffler Type" configKey="exhaustMufflerType" config={config} onChange={handleChange} testId="veh-muffler-type" />
+          <ParamRow label="Resonator" configKey="exhaustResonatorEnabled" config={config} onChange={handleChange} testId="veh-exhaust-resonator" />
+          <ParamRow label="Catback Type" configKey="exhaustCatbackType" config={config} onChange={handleChange} testId="veh-catback-type" />
+          <ParamRow label="Tip Diameter" configKey="exhaustTipDiaMm" config={config} onChange={handleChange} unit="mm" step={5} min={38} testId="veh-exhaust-tip" />
+          <ParamRow label="Backpressure" configKey="exhaustBackpressureKpa" config={config} onChange={handleChange} unit="kPa" step={1} min={0} testId="veh-backpressure" />
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── COOLING SYSTEM ───────────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Cooling System" color="#06b6d4" defaultOpen={false}>
+          <ParamRow label="Radiator Type" configKey="radiatorType" config={config} onChange={handleChange} testId="veh-radiator-type" />
+          <ParamRow label="Rad Cap Pressure" configKey="radiatorCapPsi" config={config} onChange={handleChange} unit="PSI" step={1} min={10} testId="veh-rad-cap" />
+          <ParamRow label="Thermostat Open" configKey="thermostatOpenTempF" config={config} onChange={handleChange} unit="°F" step={5} min={140} testId="veh-tstat-open" />
+          <ParamRow label="Thermostat Full" configKey="thermostatFullOpenTempF" config={config} onChange={handleChange} unit="°F" step={5} min={160} testId="veh-tstat-full" />
+          <ParamRow label="Coolant Type" configKey="coolantType" config={config} onChange={handleChange} testId="veh-coolant-type" />
+          <ParamRow label="Coolant Mix %" configKey="coolantMixPct" config={config} onChange={handleChange} unit="%" step={5} min={0} testId="veh-coolant-mix" />
+          <ParamRow label="Water Pump" configKey="waterPumpType" config={config} onChange={handleChange} testId="veh-water-pump" />
+          <ParamRow label="Oil Cooler" configKey="oilCoolerEnabled" config={config} onChange={handleChange} testId="veh-oil-cooler" />
+          {config.oilCoolerEnabled && (
+            <ParamRow label="Oil Cooler Rows" configKey="oilCoolerRowCount" config={config} onChange={handleChange} unit="rows" step={1} min={1} testId="veh-oil-cooler-rows" />
+          )}
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── TRANSMISSION EXTENDED ────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Transmission Details (S4C)" color="#f97316" defaultOpen={false}>
+          <ParamRow label="Trans Type" configKey="transmissionType" config={config} onChange={handleChange} testId="veh-trans-type" />
+          <ParamRow label="Clutch Type" configKey="clutchType" config={config} onChange={handleChange} testId="veh-clutch-type" />
+          <ParamRow label="Clutch Spring" configKey="clutchSpringPressureLb" config={config} onChange={handleChange} unit="lb" step={100} min={500} testId="veh-clutch-spring" />
+          <ParamRow label="Flywheel Type" configKey="flywheelType" config={config} onChange={handleChange} testId="veh-fw-type" />
+          <ParamRow label="Flywheel Mass" configKey="flywheelMassLb" config={config} onChange={handleChange} unit="lbs" step={1} min={4} testId="veh-fw-mass" />
+          <ParamRow label="Synchro Type" configKey="synchronizerType" config={config} onChange={handleChange} testId="veh-synchro-type" />
+          <ParamRow label="Trans Fluid" configKey="transFluidType" config={config} onChange={handleChange} testId="veh-trans-fluid" />
+          <ParamRow label="Fluid Temp Warning" configKey="transFluidTempWarningF" config={config} onChange={handleChange} unit="°F" step={10} min={200} testId="veh-trans-temp" />
+          <ParamRow label="LSD Preload" configKey="limitedSlipPreload" config={config} onChange={handleChange} unit="lb·ft" step={5} min={0} testId="veh-lsd-preload" />
+          <ParamRow label="Short Shifter" configKey="shortShifterInstalled" config={config} onChange={handleChange} testId="veh-short-shift" />
+          <ParamRow label="Cable Bushing" configKey="shifterCableBushingType" config={config} onChange={handleChange} testId="veh-cable-bushing" />
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── WHEEL SPECS ──────────────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Wheel Specs (15×6 ET50 4×100)" color="#22c55e" defaultOpen={false}>
+          <ParamRow label="Wheel Width" configKey="wheelWidthIn" config={config} onChange={handleChange} unit="in" step={0.5} min={4} testId="veh-wheel-width" />
+          <ParamRow label="Offset (ET)" configKey="wheelOffsetMm" config={config} onChange={handleChange} unit="mm" step={2} min={15} testId="veh-wheel-offset" />
+          <ParamRow label="Bolt Pattern" configKey="wheelBoltPattern" config={config} onChange={handleChange} testId="veh-bolt-pattern" />
+          <ParamRow label="Center Bore" configKey="wheelCenterBoreMm" config={config} onChange={handleChange} unit="mm" step={0.1} min={50} testId="veh-center-bore" />
+          <ParamRow label="Material" configKey="wheelMaterialType" config={config} onChange={handleChange} testId="veh-wheel-material" />
+          <ParamRow label="Wheel Mass" configKey="wheelMassLb" config={config} onChange={handleChange} unit="lbs" step={1} min={5} testId="veh-wheel-mass" />
+          <ParamRow label="Spare Tire" configKey="spareTireType" config={config} onChange={handleChange} testId="veh-spare-tire" />
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── TPMS ─────────────────────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Tire Pressure (TPMS)" color="#22c55e" defaultOpen={false}>
+          <ParamRow label="TPMS Enabled" configKey="tpmsEnabled" config={config} onChange={handleChange} testId="veh-tpms-en" />
+          <ParamRow label="FL Pressure" configKey="frontLeftPsi" config={config} onChange={handleChange} unit="PSI" step={1} min={20} testId="veh-fl-psi" />
+          <ParamRow label="FR Pressure" configKey="frontRightPsi" config={config} onChange={handleChange} unit="PSI" step={1} min={20} testId="veh-fr-psi" />
+          <ParamRow label="RL Pressure" configKey="rearLeftPsi" config={config} onChange={handleChange} unit="PSI" step={1} min={20} testId="veh-rl-psi" />
+          <ParamRow label="RR Pressure" configKey="rearRightPsi" config={config} onChange={handleChange} unit="PSI" step={1} min={20} testId="veh-rr-psi" />
+          <ParamRow label="Cold Target" configKey="tpmsColdPsi" config={config} onChange={handleChange} unit="PSI" step={1} min={24} testId="veh-tpms-cold" />
+          <ParamRow label="Hot Delta" configKey="tpmsHotDeltaPsi" config={config} onChange={handleChange} unit="PSI" step={1} min={1} testId="veh-tpms-hot-delta" />
+          <ParamRow label="Low Warning" configKey="tpmsLowWarningPsi" config={config} onChange={handleChange} unit="PSI" step={1} min={18} testId="veh-tpms-low" />
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── BRAKE EXTENDED ───────────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Brake Details (Hydraulic)" color="#ef4444" defaultOpen={false}>
+          <ParamRow label="Front Caliper Pistons" configKey="frontCaliperPistons" config={config} onChange={handleChange} unit="#" step={1} min={1} testId="veh-front-cal-pistons" />
+          <ParamRow label="Rear Caliper Pistons" configKey="rearCaliperPistons" config={config} onChange={handleChange} unit="#" step={1} min={1} testId="veh-rear-cal-pistons" />
+          <ParamRow label="Front Piston Dia" configKey="frontCaliperPistonDiaMm" config={config} onChange={handleChange} unit="mm" step={2} min={25} testId="veh-front-piston-dia" />
+          <ParamRow label="Rear Piston Dia" configKey="rearCaliperPistonDiaMm" config={config} onChange={handleChange} unit="mm" step={2} min={20} testId="veh-rear-piston-dia" />
+          <ParamRow label="Master Cyl Bore" configKey="masterCylBoreMm" config={config} onChange={handleChange} unit="mm" step={0.5} min={18} testId="veh-mc-bore" />
+          <ParamRow label="Booster Type" configKey="brakeBoosterType" config={config} onChange={handleChange} testId="veh-booster-type" />
+          <ParamRow label="Brake Lines" configKey="brakeLineType" config={config} onChange={handleChange} testId="veh-brake-line" />
+          <ParamRow label="Brake Fluid" configKey="brakeFluidType" config={config} onChange={handleChange} testId="veh-brake-fluid" />
+          <ParamRow label="Parking Brake" configKey="parkingBrakeType" config={config} onChange={handleChange} testId="veh-park-brake" />
+          <ParamRow label="Front Rotor Type" configKey="frontRotorType" config={config} onChange={handleChange} testId="veh-front-rotor-type" />
+          <ParamRow label="Rear Rotor Type" configKey="rearRotorType" config={config} onChange={handleChange} testId="veh-rear-rotor-type" />
+          <ParamRow label="Front Rotor Thick" configKey="frontRotorThickMm" config={config} onChange={handleChange} unit="mm" step={1} min={10} testId="veh-front-rotor-thick" />
+          <ParamRow label="Rear Rotor Thick" configKey="rearRotorThickMm" config={config} onChange={handleChange} unit="mm" step={1} min={5} testId="veh-rear-rotor-thick" />
+          <ParamRow label="Brake Ducting" configKey="brakeDuctingEnabled" config={config} onChange={handleChange} testId="veh-brake-ducting" />
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── SUSPENSION EXTENDED ──────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Suspension Extended (Advanced)" color="#a855f7" defaultOpen={false}>
+          <ParamRow label="Coilovers" configKey="coiloverEnabled" config={config} onChange={handleChange} testId="veh-coilover-en" />
+          <ParamRow label="F Strut Mount" configKey="frontStrutTopMountType" config={config} onChange={handleChange} testId="veh-front-strut-mount" />
+          <ParamRow label="R Top Mount" configKey="rearTopMountType" config={config} onChange={handleChange} testId="veh-rear-top-mount" />
+          <ParamRow label="F Bump Stop Gap" configKey="frontBumpStopGapMm" config={config} onChange={handleChange} unit="mm" step={5} min={10} testId="veh-front-bump-gap" />
+          <ParamRow label="R Bump Stop Gap" configKey="rearBumpStopGapMm" config={config} onChange={handleChange} unit="mm" step={5} min={10} testId="veh-rear-bump-gap" />
+          <ParamRow label="F Spring Perch Ht" configKey="frontSpringPerchHeightMm" config={config} onChange={handleChange} unit="mm" step={5} min={80} testId="veh-front-perch" />
+          <ParamRow label="R Spring Perch Ht" configKey="rearSpringPerchHeightMm" config={config} onChange={handleChange} unit="mm" step={5} min={80} testId="veh-rear-perch" />
+          <ParamRow label="F Roll Center" configKey="frontRollCenterHeightMm" config={config} onChange={handleChange} unit="mm" step={5} min={0} testId="veh-front-roll-center" />
+          <ParamRow label="R Roll Center" configKey="rearRollCenterHeightMm" config={config} onChange={handleChange} unit="mm" step={5} min={30} testId="veh-rear-roll-center" />
+          <ParamRow label="Anti-Dive %" configKey="frontAntiDivePct" config={config} onChange={handleChange} unit="%" step={5} min={0} testId="veh-anti-dive" />
+          <ParamRow label="Anti-Squat %" configKey="rearAntiSquatPct" config={config} onChange={handleChange} unit="%" step={5} min={0} testId="veh-anti-squat" />
+          <ParamRow label="Corner Wt FL" configKey="cornerWeightFLlb" config={config} onChange={handleChange} unit="lb" step={5} min={400} testId="veh-cw-fl" />
+          <ParamRow label="Corner Wt FR" configKey="cornerWeightFRlb" config={config} onChange={handleChange} unit="lb" step={5} min={400} testId="veh-cw-fr" />
+          <ParamRow label="Corner Wt RL" configKey="cornerWeightRLlb" config={config} onChange={handleChange} unit="lb" step={5} min={200} testId="veh-cw-rl" />
+          <ParamRow label="Corner Wt RR" configKey="cornerWeightRRlb" config={config} onChange={handleChange} unit="lb" step={5} min={200} testId="veh-cw-rr" />
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── AERO EXTENDED ────────────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Aero Extended" color="#3b82f6" defaultOpen={false}>
+          <ParamRow label="Rear Diffuser" configKey="rearDiffuserEnabled" config={config} onChange={handleChange} testId="veh-diffuser-en" />
+          {config.rearDiffuserEnabled && (
+            <ParamRow label="Diffuser Angle" configKey="rearDiffuserAngleDeg" config={config} onChange={handleChange} unit="°" step={1} min={5} testId="veh-diffuser-angle" />
+          )}
+          <ParamRow label="Side Skirts" configKey="sideSkirtType" config={config} onChange={handleChange} testId="veh-side-skirts" />
+          <ParamRow label="Canards" configKey="canardEnabled" config={config} onChange={handleChange} testId="veh-canards-en" />
+          <ParamRow label="Flat Undertray" configKey="flatUndertrayEnabled" config={config} onChange={handleChange} testId="veh-undertray" />
+          <ParamRow label="Hood Vents" configKey="hoodVentsEnabled" config={config} onChange={handleChange} testId="veh-hood-vents" />
+          <ParamRow label="Fender Vents" configKey="fenderVentsEnabled" config={config} onChange={handleChange} testId="veh-fender-vents" />
+          <ParamRow label="Wing Type" configKey="rearWingType" config={config} onChange={handleChange} testId="veh-wing-type" />
+          <ParamRow label="Splitter Material" configKey="frontSplitterMaterialType" config={config} onChange={handleChange} testId="veh-splitter-material" />
+          <ParamRow label="Splitter Rods" configKey="splitterSupportRods" config={config} onChange={handleChange} testId="veh-splitter-rods" />
+          <ParamRow label="Aero Balance" configKey="aeroBalancePct" config={config} onChange={handleChange} unit="%" step={5} min={0} testId="veh-aero-balance" />
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── BODY / CHASSIS ───────────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Body & Chassis (EM1)" color="#3b82f6" defaultOpen={false}>
+          <ParamRow label="Chassis Type" configKey="chassisType" config={config} onChange={handleChange} testId="veh-chassis-type" />
+          <ParamRow label="Seam Weld" configKey="seam_weldEnabled" config={config} onChange={handleChange} testId="veh-seam-weld" />
+          <ParamRow label="Hood Type" configKey="hoodType" config={config} onChange={handleChange} testId="veh-hood-type" />
+          <ParamRow label="Trunk Type" configKey="trunkType" config={config} onChange={handleChange} testId="veh-trunk-type" />
+          <ParamRow label="Front Bumper" configKey="frontBumperType" config={config} onChange={handleChange} testId="veh-front-bumper" />
+          <ParamRow label="Rear Bumper" configKey="rearBumperType" config={config} onChange={handleChange} testId="veh-rear-bumper" />
+          <ParamRow label="Fender Type" configKey="fenderType" config={config} onChange={handleChange} testId="veh-fender-type" />
+          <ParamRow label="Windows" configKey="windowType" config={config} onChange={handleChange} testId="veh-window-type" />
+          <ParamRow label="Windshield" configKey="windshieldType" config={config} onChange={handleChange} testId="veh-windshield" />
+          <ParamRow label="Rear Seat Delete" configKey="rearSeatDelete" config={config} onChange={handleChange} testId="veh-rear-seat-del" />
+          <ParamRow label="Carpet Delete" configKey="carpetDelete" config={config} onChange={handleChange} testId="veh-carpet-del" />
+          <ParamRow label="A/C Delete" configKey="acDelete" config={config} onChange={handleChange} testId="veh-ac-del" />
+          <ParamRow label="P/S Delete" configKey="powerSteeringDelete" config={config} onChange={handleChange} testId="veh-ps-del" />
+          <ParamRow label="Spare Delete" configKey="spareTireDelete" config={config} onChange={handleChange} testId="veh-spare-del" />
+          <ParamRow label="Tow Hook Front" configKey="towHookFrontEnabled" config={config} onChange={handleChange} testId="veh-tow-front" />
+          <ParamRow label="Tow Hook Rear" configKey="towHookRearEnabled" config={config} onChange={handleChange} testId="veh-tow-rear" />
+          <ParamRow label="Brake Light Bar" configKey="brakeLightBarEnabled" config={config} onChange={handleChange} testId="veh-brake-light-bar" />
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── SAFETY SYSTEMS ───────────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Safety Systems" color="#f59e0b" defaultOpen={false}>
+          <ParamRow label="Roll Cage" configKey="rollCageType" config={config} onChange={handleChange} testId="veh-cage-type" />
+          <ParamRow label="Harness" configKey="harnessType" config={config} onChange={handleChange} testId="veh-harness" />
+          <ParamRow label="Fire Extinguisher" configKey="fireExtinguisherType" config={config} onChange={handleChange} testId="veh-fire-ext" />
+          <ParamRow label="Kill Switch" configKey="killSwitchEnabled" config={config} onChange={handleChange} testId="veh-kill-switch" />
+          <ParamRow label="Battery Disconnect" configKey="batteryDisconnectEnabled" config={config} onChange={handleChange} testId="veh-batt-disc" />
+          <ParamRow label="Window Net" configKey="windowNetEnabled" config={config} onChange={handleChange} testId="veh-window-net" />
+          <ParamRow label="Helmet Required" configKey="helmetRequired" config={config} onChange={handleChange} testId="veh-helmet" />
+          <ParamRow label="Fuel Cell Type" configKey="fuelCellType" config={config} onChange={handleChange} testId="veh-fuel-cell" />
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── ELECTRICAL SYSTEM ────────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Electrical System" color="#06b6d4" defaultOpen={false}>
+          <ParamRow label="Battery Voltage" configKey="batteryVoltage" config={config} onChange={handleChange} unit="V" step={0.1} min={11} testId="veh-batt-v" />
+          <ParamRow label="Alternator Amps" configKey="alternatorOutputAmps" config={config} onChange={handleChange} unit="A" step={5} min={40} testId="veh-alt-amps" />
+          <ParamRow label="Ignition Coil" configKey="ignitionCoilType" config={config} onChange={handleChange} testId="veh-ign-coil" />
+          <ParamRow label="Spark Plug" configKey="sparkPlugType" config={config} onChange={handleChange} testId="veh-spark-plug" />
+          <ParamRow label="Heat Range" configKey="sparkPlugHeatRange" config={config} onChange={handleChange} unit="#" step={1} min={4} testId="veh-heat-range" />
+          <ParamRow label="Wiring Harness" configKey="wiringHarnessType" config={config} onChange={handleChange} testId="veh-wiring" />
+          <ParamRow label="Grounding Kit" configKey="groundingKitInstalled" config={config} onChange={handleChange} testId="veh-ground-kit" />
+          <ParamRow label="Fan Relay Upgrade" configKey="relayFanUpgrade" config={config} onChange={handleChange} testId="veh-fan-relay" />
+          <ParamRow label="Main Relay" configKey="mainRelayType" config={config} onChange={handleChange} testId="veh-main-relay" />
+        </CollapsibleSection>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* ── COSMETIC / PAINT ─────────────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        <CollapsibleSection title="Cosmetic / Paint" color="#ec4899" defaultOpen={false}>
+          <ParamRow label="Exterior Color" configKey="exteriorColor" config={config} onChange={handleChange} testId="veh-ext-color" />
+          <ParamRow label="Interior Color" configKey="interiorColor" config={config} onChange={handleChange} testId="veh-int-color" />
+          <ParamRow label="Sunroof Delete" configKey="sunroofDelete" config={config} onChange={handleChange} testId="veh-sunroof-del" />
+          <ParamRow label="Window Tint" configKey="tintPct" config={config} onChange={handleChange} unit="%" step={5} min={0} testId="veh-tint" />
         </CollapsibleSection>
 
         <div className="h-6" />
