@@ -133,6 +133,115 @@ export interface EcuConfig {
   rearDiffType: 'open' | 'lsd' | 'locked';
   centerDiffType: 'open' | 'viscous' | 'torsen' | 'locked';
   awdFrontBias: number;             // 0-1; front torque split for AWD (0.6 = 60% front)
+
+  // ══════════════════════════════════════════════════════════════════
+  // EXPANDED ECU PARAMETERS (Hondata / Haltech / MegaSquirt style)
+  // ══════════════════════════════════════════════════════════════════
+
+  // ── Injector Tuning ──
+  injectorDeadTimeMs: number;       // Injector dead time (battery voltage dependent)
+  injectorAngleDeg: number;         // Injection start angle (crank degrees)
+  injectorStagingEnabled: boolean;  // Secondary injector staging
+  injectorStagingRpm: number;       // RPM threshold for secondary injectors
+  injectorStagingSizeCc: number;    // Secondary injector size
+
+  // ── Fuel Pump ──
+  fuelPumpPrimePct: number;         // Fuel pump prime duty cycle
+  fuelPumpBoostPct: number;         // Fuel pump boost mode duty
+  fuelReturnEnabled: boolean;       // Returnless or return-style fuel system
+
+  // ── Ignition Extended ──
+  dwellTimeMs: number;              // Ignition coil dwell time
+  dwellVoltageComp: boolean;        // Battery voltage dwell compensation
+  trailingSpark: boolean;           // Trailing spark (for rotary or twin-spark)
+  sparkPlugGapMm: number;           // Spark plug gap
+  ignitionCutType: 'hard' | 'soft'; // Hard vs soft rev limit cut type
+
+  // ── EGO / Lambda Control ──
+  egoTrimMax: number;               // Maximum EGO correction %
+  egoTrimMin: number;               // Minimum EGO correction %
+  egoUpdateRateHz: number;          // EGO correction update rate
+  lambdaTarget: number;             // Lambda target (1.0 = stoich)
+
+  // ── Data Logging ──
+  dataLogRateHz: number;            // Logging sample rate
+  dataLogEnabled: boolean;          // Enable data logging
+
+  // ── Aux Outputs ──
+  auxOutput1Function: 'vtec' | 'fan' | 'boost' | 'nitrous' | 'shift_light' | 'off';
+  auxOutput2Function: 'vtec' | 'fan' | 'boost' | 'nitrous' | 'shift_light' | 'off';
+  shiftLightRpm: number;            // Shift light activation RPM
+  shiftLightFlashRpm: number;       // Shift light flash threshold
+
+  // ── Oil System ──
+  oilPressureMinPsi: number;        // Minimum oil pressure warning
+  oilTempWarningF: number;          // Oil temp warning threshold
+  oilPressureSensorEnabled: boolean;
+  oilTempSensorEnabled: boolean;
+
+  // ── Exhaust Gas Temperature ──
+  egtWarningF: number;              // EGT warning threshold
+  egtSensorEnabled: boolean;
+  egtFuelEnrichDeg: number;         // EGT-based fuel enrichment threshold
+
+  // ── Wideband O2 ──
+  widebandAfrMin: number;           // Wideband gauge min
+  widebandAfrMax: number;           // Wideband gauge max
+  widebandCalOffset: number;        // Calibration offset
+
+  // ══════════════════════════════════════════════════════════════════
+  // EXPANDED VEHICLE PARAMETERS
+  // ══════════════════════════════════════════════════════════════════
+
+  // ── Suspension Geometry (Honda EK McPherson front, trailing arm rear) ──
+  frontCamberDeg: number;           // Front camber angle (negative = top in)
+  rearCamberDeg: number;            // Rear camber angle
+  frontToeDeg: number;              // Front toe (negative = toe out)
+  rearToeDeg: number;               // Rear toe
+  frontCasterDeg: number;           // Front caster angle
+  frontKPIDeg: number;              // Kingpin inclination angle
+
+  // ── Springs ──
+  frontSpringRateKgmm: number;     // Front spring rate kg/mm
+  rearSpringRateKgmm: number;      // Rear spring rate kg/mm
+  frontRideHeightMm: number;       // Front ride height mm
+  rearRideHeightMm: number;        // Rear ride height mm
+
+  // ── Dampers (Shocks/Struts) ──
+  frontDamperBump: number;         // Front bump damping (1-10 clicks)
+  frontDamperRebound: number;      // Front rebound damping (1-10 clicks)
+  rearDamperBump: number;          // Rear bump damping
+  rearDamperRebound: number;       // Rear rebound damping
+
+  // ── Anti-Roll Bars (Sway Bars) ──
+  frontSwayBarDiaMm: number;       // Front sway bar diameter
+  rearSwayBarDiaMm: number;        // Rear sway bar diameter
+  frontSwayBarEnabled: boolean;
+  rearSwayBarEnabled: boolean;
+
+  // ── Brakes (Honda EK stock: 262mm front, 239mm rear) ──
+  brakeBiasFront: number;          // Front brake bias 0-1 (0.6 = 60% front)
+  frontRotorDiaMm: number;         // Front rotor diameter
+  rearRotorDiaMm: number;          // Rear rotor diameter
+  brakePadType: 'stock' | 'sport' | 'race' | 'carbon';
+  absEnabled: boolean;
+
+  // ── Aero ──
+  rearWingEnabled: boolean;
+  rearWingAngleDeg: number;        // Rear wing angle of attack
+  frontSplitterEnabled: boolean;
+  downforceCoefficientFront: number;
+  downforceCoefficientRear: number;
+
+  // ── Weight Distribution ──
+  ballastKg: number;               // Additional ballast weight
+  ballastPositionPct: number;      // Ballast position front-to-rear (0=front, 1=rear)
+  driverWeightKg: number;          // Driver weight
+
+  // ── Steering ──
+  steeringRatio: number;           // Steering ratio (turns lock-to-lock)
+  steeringLockDeg: number;         // Maximum steering angle
+  powerSteeringEnabled: boolean;
 }
 
 export function getDefaultEcuConfig(): EcuConfig {
@@ -274,6 +383,115 @@ export function getDefaultEcuConfig(): EcuConfig {
     rearDiffType: 'open',
     centerDiffType: 'open',
     awdFrontBias: 0.6,
+
+    // ══════════════════════════════════════════════════════════════════
+    // EXPANDED ECU PARAMETERS
+    // ══════════════════════════════════════════════════════════════════
+
+    // ── Injector Tuning ──
+    injectorDeadTimeMs: 0.9,          // Typical 240cc injector at 14V
+    injectorAngleDeg: 355,            // End of injection angle
+    injectorStagingEnabled: false,
+    injectorStagingRpm: 6000,
+    injectorStagingSizeCc: 440,
+
+    // ── Fuel Pump ──
+    fuelPumpPrimePct: 100,
+    fuelPumpBoostPct: 100,
+    fuelReturnEnabled: true,          // B16A2 uses return-type fuel system
+
+    // ── Ignition Extended ──
+    dwellTimeMs: 3.0,                 // OEM Honda coil dwell
+    dwellVoltageComp: true,
+    trailingSpark: false,
+    sparkPlugGapMm: 1.1,              // NGK BKR6E-11 spec gap
+    ignitionCutType: 'hard',
+
+    // ── EGO / Lambda Control ──
+    egoTrimMax: 25,
+    egoTrimMin: -25,
+    egoUpdateRateHz: 10,
+    lambdaTarget: 1.0,
+
+    // ── Data Logging ──
+    dataLogRateHz: 50,
+    dataLogEnabled: false,
+
+    // ── Aux Outputs ──
+    auxOutput1Function: 'vtec',
+    auxOutput2Function: 'fan',
+    shiftLightRpm: 7800,
+    shiftLightFlashRpm: 8000,
+
+    // ── Oil System ──
+    oilPressureMinPsi: 15,
+    oilTempWarningF: 260,
+    oilPressureSensorEnabled: false,
+    oilTempSensorEnabled: false,
+
+    // ── Exhaust Gas Temperature ──
+    egtWarningF: 1600,
+    egtSensorEnabled: false,
+    egtFuelEnrichDeg: 1500,
+
+    // ── Wideband O2 ──
+    widebandAfrMin: 10.0,
+    widebandAfrMax: 20.0,
+    widebandCalOffset: 0,
+
+    // ══════════════════════════════════════════════════════════════════
+    // EXPANDED VEHICLE PARAMETERS (Honda Civic EM1 OEM specs)
+    // ══════════════════════════════════════════════════════════════════
+
+    // ── Suspension Geometry (OEM EM1 alignment specs) ──
+    frontCamberDeg: -0.5,            // OEM spec: -1°00' to 0°00'
+    rearCamberDeg: -1.0,             // OEM spec: -1°30' to -0°30'
+    frontToeDeg: 0,                  // OEM spec: 0mm ± 2mm
+    rearToeDeg: 0.1,                 // OEM spec: 2mm ± 2mm toe in
+    frontCasterDeg: 2.28,            // OEM spec: 1°48' to 3°48'
+    frontKPIDeg: 13.0,               // OEM kingpin inclination
+
+    // ── Springs (Honda Civic Si EM1 stock) ──
+    frontSpringRateKgmm: 2.5,       // ~25 N/mm stock
+    rearSpringRateKgmm: 2.0,        // ~20 N/mm stock
+    frontRideHeightMm: 340,          // Front wheel center to fender
+    rearRideHeightMm: 350,           // Rear wheel center to fender
+
+    // ── Dampers ──
+    frontDamperBump: 5,              // Middle setting (1-10)
+    frontDamperRebound: 5,
+    rearDamperBump: 5,
+    rearDamperRebound: 5,
+
+    // ── Anti-Roll Bars ──
+    frontSwayBarDiaMm: 24,           // EM1 front sway bar 24mm
+    rearSwayBarDiaMm: 13,            // EM1 rear sway bar 13mm
+    frontSwayBarEnabled: true,
+    rearSwayBarEnabled: true,
+
+    // ── Brakes (Honda EM1 stock) ──
+    brakeBiasFront: 0.60,            // 60/40 front bias
+    frontRotorDiaMm: 262,            // EM1 front: 262mm solid
+    rearRotorDiaMm: 239,             // EM1 rear: 239mm drum → disc
+    brakePadType: 'stock',
+    absEnabled: true,                // EM1 has ABS
+
+    // ── Aero ──
+    rearWingEnabled: false,
+    rearWingAngleDeg: 5,
+    frontSplitterEnabled: false,
+    downforceCoefficientFront: 0,
+    downforceCoefficientRear: 0,
+
+    // ── Weight Distribution ──
+    ballastKg: 0,
+    ballastPositionPct: 0.5,
+    driverWeightKg: 75,
+
+    // ── Steering (Honda EK) ──
+    steeringRatio: 15.7,             // OEM rack ratio
+    steeringLockDeg: 35,             // Max steering angle at wheels
+    powerSteeringEnabled: true,
   };
 }
 

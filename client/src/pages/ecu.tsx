@@ -200,6 +200,9 @@ function getStringOptions(key: ConfigKey): string[] {
     case "frontDiffType": return ["open", "lsd", "locked"];
     case "rearDiffType": return ["open", "lsd", "locked"];
     case "centerDiffType": return ["open", "viscous", "torsen", "locked"];
+    case "ignitionCutType": return ["hard", "soft"];
+    case "auxOutput1Function": return ["vtec", "fan", "boost", "nitrous", "shift_light", "off"];
+    case "auxOutput2Function": return ["vtec", "fan", "boost", "nitrous", "shift_light", "off"];
     default: return [];
   }
 }
@@ -287,6 +290,9 @@ export default function EcuPage() {
         <Link href="/" className="text-[10px] tracking-wider uppercase opacity-70 font-mono" data-testid="link-dashboard">
           GAUGES
         </Link>
+        <Link href="/vehicle" className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-orange-500/40 text-orange-400/80 px-2 py-0.5" data-testid="link-vehicle">
+          VEHICLE
+        </Link>
         <button
           onClick={toggleAi}
           className={`text-[10px] tracking-wider uppercase font-mono border px-2 py-0.5 ${aiMode ? "border-green-500/60 text-green-400 opacity-100" : "border-white/25 opacity-70"}`}
@@ -294,7 +300,7 @@ export default function EcuPage() {
         >
           {aiMode ? "AI ON" : "CODE"}
         </button>
-        <span className="text-[10px] tracking-[0.3em] uppercase opacity-80 font-mono">ECU TUNING</span>
+        <span className="text-[10px] tracking-[0.3em] uppercase opacity-80 font-mono text-green-400">ECU TUNING</span>
         <button
           onClick={handleReset}
           className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5"
@@ -491,56 +497,6 @@ export default function EcuPage() {
         <ParamRow label="TC Fuel Cut" configKey="tractionFuelCutPct" config={config} onChange={handleChange} unit="%" step={5} min={0} testId="ecu-tc-fuel-cut" />
         <ParamRow label="TC Mode" configKey="tractionControlMode" config={config} onChange={handleChange} testId="ecu-tc-mode" />
 
-        <SectionHeader title="Gear Ratios" />
-        <ArrayParamRow label="Gear Ratios" configKey="gearRatios" config={config} onChange={handleChange} unit="ratio" step={0.01} labels={["1st", "2nd", "3rd", "4th", "5th"]} testId="ecu-gear-ratios" />
-        <ParamRow label="Final Drive" configKey="finalDriveRatio" config={config} onChange={handleChange} unit="ratio" step={0.05} min={2} testId="ecu-final-drive" />
-        <ArrayParamRow label="Per-Gear Rev Limits" configKey="gearRevLimits" config={config} onChange={handleChange} unit="rpm" step={100} labels={["1st", "2nd", "3rd", "4th", "5th"]} testId="ecu-gear-rev-limits" />
-
-        <SectionHeader title="Tire Setup" />
-        <ParamRow label="Tire Width" configKey="tireWidthMm" config={config} onChange={handleChange} unit="mm" step={5} min={135} testId="ecu-tire-width" />
-        <ParamRow label="Aspect Ratio" configKey="tireAspectRatio" config={config} onChange={handleChange} unit="%" step={5} min={25} testId="ecu-tire-aspect" />
-        <ParamRow label="Wheel Dia" configKey="tireWheelDiameterIn" config={config} onChange={handleChange} unit="in" step={1} min={13} testId="ecu-wheel-dia" />
-        <ParamRow label="Compound" configKey="tireCompound" config={config} onChange={handleChange} testId="ecu-tire-compound" />
-        <ParamRow label="Grip %" configKey="tireGripPct" config={config} onChange={handleChange} unit="%" step={5} min={50} testId="ecu-tire-grip-pct" />
-        <ParamRow label="Temp Sensitivity" configKey="tireTempSensitivity" config={config} onChange={handleChange} unit="x" step={0.1} min={0} testId="ecu-tire-temp-sens" />
-
-        <SectionHeader title="Weather / Environment" />
-        <ParamRow label="Ambient Temp" configKey="ambientTempF" config={config} onChange={handleChange} unit="°F" step={5} min={-20} testId="ecu-ambient-temp" />
-        <ParamRow label="Humidity" configKey="humidityPct" config={config} onChange={handleChange} unit="%" step={5} min={0} testId="ecu-humidity" />
-        <ParamRow label="Altitude" configKey="altitudeFt" config={config} onChange={handleChange} unit="ft" step={500} min={0} testId="ecu-altitude" />
-
-        <SectionHeader title="Drivetrain Layout" />
-        <ParamRow label="Drive Type" configKey="drivetrainType" config={config} onChange={handleChange} testId="ecu-drivetrain-type" />
-        <ParamRow label="Front Diff" configKey="frontDiffType" config={config} onChange={handleChange} testId="ecu-front-diff" />
-        {(config.drivetrainType === 'RWD' || config.drivetrainType === 'AWD') && (
-          <ParamRow label="Rear Diff" configKey="rearDiffType" config={config} onChange={handleChange} testId="ecu-rear-diff" />
-        )}
-        {config.drivetrainType === 'AWD' && (
-          <>
-            <ParamRow label="Center Diff" configKey="centerDiffType" config={config} onChange={handleChange} testId="ecu-center-diff" />
-            <ParamRow label="AWD Front Bias" configKey="awdFrontBias" config={config} onChange={handleChange} unit="ratio" step={0.05} min={0.1} testId="ecu-awd-front-bias" />
-          </>
-        )}
-
-        <SectionHeader title="Vehicle" />
-        <ParamRow label="Vehicle Mass" configKey="vehicleMassLb" config={config} onChange={handleChange} unit="lbs" step={10} min={1500} testId="ecu-mass" />
-        <ParamRow label="Tire Mass" configKey="tireMassLb" config={config} onChange={handleChange} unit="lbs" step={1} min={8} testId="ecu-tire-mass" />
-        <ParamRow label="Drag Coeff" configKey="dragCoefficient" config={config} onChange={handleChange} unit="cd" step={0.01} min={0.1} testId="ecu-drag-coeff" />
-        <ParamRow label="Frontal Area" configKey="frontalAreaM2" config={config} onChange={handleChange} unit="m2" step={0.05} min={1} testId="ecu-frontal-area" />
-        <ParamRow label="Rolling Resist" configKey="rollingResistanceCoeff" config={config} onChange={handleChange} unit="coeff" step={0.001} min={0.005} testId="ecu-rolling-resist" />
-        <ParamRow label="Drivetrain Loss" configKey="drivetrainLossPct" config={config} onChange={handleChange} unit="%" step={1} min={5} testId="ecu-dt-loss" />
-
-        <SectionHeader title="Clutch" />
-        <ParamRow label="Max Torque" configKey="clutchMaxTorqueNm" config={config} onChange={handleChange} unit="Nm" step={10} min={100} testId="ecu-clutch-torque" />
-
-        <SectionHeader title="Traction Physics" />
-        <ParamRow label="Tire Grip" configKey="tireGripCoeff" config={config} onChange={handleChange} unit="coeff" step={0.05} min={0.3} testId="ecu-tire-grip" />
-        <ParamRow label="Wheelbase" configKey="wheelbaseM" config={config} onChange={handleChange} unit="m" step={0.01} min={2} testId="ecu-wheelbase" />
-        <ParamRow label="CG Height" configKey="cgHeightM" config={config} onChange={handleChange} unit="m" step={0.01} min={0.2} testId="ecu-cg-height" />
-        <ParamRow label="Front Weight" configKey="frontWeightBias" config={config} onChange={handleChange} unit="bias" step={0.01} min={0.3} testId="ecu-front-bias" />
-        <ParamRow label="Opt Slip Ratio" configKey="optimalSlipRatio" config={config} onChange={handleChange} unit="ratio" step={0.01} min={0.05} testId="ecu-opt-slip" />
-        <ParamRow label="Shift Time" configKey="shiftTimeMs" config={config} onChange={handleChange} unit="ms" step={25} min={50} testId="ecu-shift-time" />
-
         <SectionHeader title="Cooling" />
         <ParamRow label="Fan On Temp" configKey="fanOnTemp" config={config} onChange={handleChange} unit="F" step={5} min={150} testId="ecu-fan-on" />
         <ParamRow label="Fan Off Temp" configKey="fanOffTemp" config={config} onChange={handleChange} unit="F" step={5} min={140} testId="ecu-fan-off" />
@@ -553,8 +509,68 @@ export default function EcuPage() {
         <ParamRow label="O2 Sensor Type" configKey="o2SensorType" config={config} onChange={handleChange} testId="ecu-o2-type" />
         <ParamRow label="Coolant Offset" configKey="coolantSensorOffset" config={config} onChange={handleChange} unit="F" step={1} min={-20} testId="ecu-coolant-offset" />
 
-        <SectionHeader title="Engine" />
-        <ParamRow label="Compression" configKey="compressionRatio" config={config} onChange={handleChange} unit=":1" step={0.1} min={7} testId="ecu-compression" />
+        <SectionHeader title="Injector Tuning" />
+        <ParamRow label="Dead Time" configKey="injectorDeadTimeMs" config={config} onChange={handleChange} unit="ms" step={0.1} min={0.3} testId="ecu-injector-dead-time" />
+        <ParamRow label="Injection Angle" configKey="injectorAngleDeg" config={config} onChange={handleChange} unit="°BTDC" step={5} min={0} testId="ecu-injector-angle" />
+        <ParamRow label="Staging Enabled" configKey="injectorStagingEnabled" config={config} onChange={handleChange} testId="ecu-injector-staging" />
+        {config.injectorStagingEnabled && (
+          <>
+            <ParamRow label="Staging RPM" configKey="injectorStagingRpm" config={config} onChange={handleChange} unit="rpm" step={100} min={2000} testId="ecu-staging-rpm" />
+            <ParamRow label="Secondary Size" configKey="injectorStagingSizeCc" config={config} onChange={handleChange} unit="cc" step={10} min={200} testId="ecu-staging-size" />
+          </>
+        )}
+
+        <SectionHeader title="Fuel Pump" />
+        <ParamRow label="Prime Duty" configKey="fuelPumpPrimePct" config={config} onChange={handleChange} unit="%" step={5} min={50} testId="ecu-pump-prime" />
+        <ParamRow label="Boost Duty" configKey="fuelPumpBoostPct" config={config} onChange={handleChange} unit="%" step={5} min={50} testId="ecu-pump-boost" />
+        <ParamRow label="Return Style" configKey="fuelReturnEnabled" config={config} onChange={handleChange} testId="ecu-fuel-return" />
+
+        <SectionHeader title="Ignition Extended" />
+        <ParamRow label="Dwell Time" configKey="dwellTimeMs" config={config} onChange={handleChange} unit="ms" step={0.1} min={1} testId="ecu-dwell" />
+        <ParamRow label="Voltage Comp" configKey="dwellVoltageComp" config={config} onChange={handleChange} testId="ecu-dwell-comp" />
+        <ParamRow label="Plug Gap" configKey="sparkPlugGapMm" config={config} onChange={handleChange} unit="mm" step={0.05} min={0.6} testId="ecu-plug-gap" />
+        <ParamRow label="Cut Type" configKey="ignitionCutType" config={config} onChange={handleChange} testId="ecu-ign-cut-type" />
+
+        <SectionHeader title="Lambda / EGO Control" />
+        <ParamRow label="Lambda Target" configKey="lambdaTarget" config={config} onChange={handleChange} unit="λ" step={0.01} min={0.7} testId="ecu-lambda" />
+        <ParamRow label="EGO Trim Max" configKey="egoTrimMax" config={config} onChange={handleChange} unit="%" step={1} min={5} testId="ecu-ego-max" />
+        <ParamRow label="EGO Trim Min" configKey="egoTrimMin" config={config} onChange={handleChange} unit="%" step={1} testId="ecu-ego-min" />
+        <ParamRow label="EGO Update Rate" configKey="egoUpdateRateHz" config={config} onChange={handleChange} unit="Hz" step={5} min={1} testId="ecu-ego-rate" />
+
+        <SectionHeader title="Data Logging" />
+        <ParamRow label="Logging Enabled" configKey="dataLogEnabled" config={config} onChange={handleChange} testId="ecu-log-enabled" />
+        <ParamRow label="Log Rate" configKey="dataLogRateHz" config={config} onChange={handleChange} unit="Hz" step={10} min={10} testId="ecu-log-rate" />
+
+        <SectionHeader title="Aux Outputs" />
+        <ParamRow label="Aux Output 1" configKey="auxOutput1Function" config={config} onChange={handleChange} testId="ecu-aux1" />
+        <ParamRow label="Aux Output 2" configKey="auxOutput2Function" config={config} onChange={handleChange} testId="ecu-aux2" />
+        <ParamRow label="Shift Light RPM" configKey="shiftLightRpm" config={config} onChange={handleChange} unit="rpm" step={100} min={4000} testId="ecu-shift-light" />
+        <ParamRow label="Shift Flash RPM" configKey="shiftLightFlashRpm" config={config} onChange={handleChange} unit="rpm" step={100} min={4000} testId="ecu-shift-flash" />
+
+        <SectionHeader title="Oil Monitoring" />
+        <ParamRow label="Oil Pressure Sensor" configKey="oilPressureSensorEnabled" config={config} onChange={handleChange} testId="ecu-oil-press-en" />
+        <ParamRow label="Min Oil Pressure" configKey="oilPressureMinPsi" config={config} onChange={handleChange} unit="psi" step={1} min={5} testId="ecu-oil-press-min" />
+        <ParamRow label="Oil Temp Sensor" configKey="oilTempSensorEnabled" config={config} onChange={handleChange} testId="ecu-oil-temp-en" />
+        <ParamRow label="Oil Temp Warning" configKey="oilTempWarningF" config={config} onChange={handleChange} unit="°F" step={5} min={200} testId="ecu-oil-temp-warn" />
+
+        <SectionHeader title="EGT Monitoring" />
+        <ParamRow label="EGT Sensor" configKey="egtSensorEnabled" config={config} onChange={handleChange} testId="ecu-egt-en" />
+        <ParamRow label="EGT Warning" configKey="egtWarningF" config={config} onChange={handleChange} unit="°F" step={50} min={1000} testId="ecu-egt-warn" />
+        <ParamRow label="EGT Enrich Threshold" configKey="egtFuelEnrichDeg" config={config} onChange={handleChange} unit="°F" step={50} min={1000} testId="ecu-egt-enrich" />
+
+        <SectionHeader title="Wideband O2" />
+        <ParamRow label="AFR Min" configKey="widebandAfrMin" config={config} onChange={handleChange} unit="afr" step={0.5} min={8} testId="ecu-wb-min" />
+        <ParamRow label="AFR Max" configKey="widebandAfrMax" config={config} onChange={handleChange} unit="afr" step={0.5} min={14} testId="ecu-wb-max" />
+        <ParamRow label="Cal Offset" configKey="widebandCalOffset" config={config} onChange={handleChange} unit="afr" step={0.1} testId="ecu-wb-offset" />
+
+        {/* ── VEHICLE / DRIVETRAIN CONFIG LINK ── */}
+        <div className="flex items-center gap-2 pt-6 pb-2 px-2">
+          <div className="h-px flex-1 bg-orange-500/30" />
+          <Link href="/vehicle" className="text-[10px] tracking-[0.2em] uppercase font-mono text-orange-400 border border-orange-500/40 px-4 py-1.5 hover:bg-orange-500/10">
+            VEHICLE &amp; DRIVETRAIN CONFIG →
+          </Link>
+          <div className="h-px flex-1 bg-orange-500/30" />
+        </div>
 
         <div className="h-6" />
       </div>

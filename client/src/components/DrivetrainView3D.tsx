@@ -61,6 +61,26 @@ const LCA_LEN          = 3.5;
 const LCA_W            = 0.18;
 const LCA_THICK        = 0.08;
 
+// ── B16A2 DOHC VTEC Engine Block ─────────────────────────────────────
+// Honda B16A2: 1.6L inline-4, bore 81mm, stroke 77.4mm, 10.2:1 CR
+const BORE             = 81 * S;         // 0.81  cylinder bore diameter
+const STROKE           = 77.4 * S;       // 0.774 piston stroke
+const BORE_SPACING     = 87 * S;         // 0.87  center-to-center bore spacing
+const CON_ROD_L        = 134 * S;        // 1.34  connecting rod length (c-to-c)
+const CRANK_THROW      = STROKE / 2;     // 0.387 crank throw radius
+const PISTON_H         = 30 * S;         // 0.30  piston height
+const BLOCK_L          = 450 * S;        // 4.50  block length along crankshaft (X)
+const BLOCK_DECK_H     = 207 * S;        // 2.07  deck height (crank center → deck)
+const BLOCK_SUMP_H     = 65 * S;         // 0.65  below crank center to sump rail
+const BLOCK_D          = 200 * S;        // 2.00  block depth front-to-back (Z)
+const HEAD_H           = 95 * S;         // 0.95  cylinder head height (w/ cam cover)
+const CRANK_MAIN_R     = 25 * S;         // 0.25  main journal radius
+const CRANK_PIN_R      = 21 * S;         // 0.21  crank pin (rod journal) radius
+const CW_R             = 55 * S;         // 0.55  counterweight outer radius
+const CW_THICK         = 12 * S;         // 0.12  counterweight thickness
+// Crank pin angular offsets (inline-4, 180° crank, firing order 1-3-4-2)
+const CRANK_OFFSETS    = [0, Math.PI, Math.PI, 0]; // Cyl 1,2,3,4
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PROP TYPES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1115,168 +1135,419 @@ function DimensionLine({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SHIFT LEVER + CABLE LINKAGE  (Honda cable-operated shifter)
+// SHIFT LINKAGE SYSTEM (Honda Civic EK — mechanical rod, ball-pivot)
 // ═══════════════════════════════════════════════════════════════════════════
-// BeamNG-style approach: shifter is a "prop" positioned relative to cabin
-// reference nodes. The Honda EM1 shifter sits on the center tunnel between
-// driver and passenger seats, ~700–900mm behind the front axle centerline.
-// Two shift cables (select + shift) route forward under the floor tunnel,
-// through the firewall, and connect to the transmission shift arm.
+// OEM Honda S4C/Y21 5-speed shift linkage (rod-type, NOT cable):
+//
+//   1. Ball-pivot shift lever in cabin
+//      - OEM parts: seat 54110-SH3-003, holder 54111-SH3-000
+//      - Spherical ball ∅30mm captured in a cup on the floor tunnel
+//      - 160mm above ball → knob, 80mm below ball → rod joint
+//      - Lever ratio 2:1  (knob travel = 2× rod-end travel)
+//
+//   2. Change rod (54201-S04-G10) + Extension (54301-S04-G10)
+//      - Rigid rod from lever bottom, forward under floor tunnel
+//      - Through firewall to transmission external shift arm
+//      - Transmits TWO DOF simultaneously:
+//        a) Rod ROTATION about its own axis → gate selection (1-2 / 3-4 / 5th-R)
+//        b) Rod axial PUSH/PULL → gear engagement (odd fwd, even back)
+//
+//   3. Transmission external shift arm
+//      - Converts rod rotation → change holder alignment
+//      - Converts rod push/pull → shift fork engagement
+//
+//   4. Internal: change holder (24400-P21-020) → shift forks
+//      - Fork 1-2 (24220-P80-000), Fork 3-4 (24210-P80-V00), Fork 5th-R
+//      - Detent ball + spring (24452-P20-000) per rail
+//      - Interlock plate prevents double engagement
+//
+// BeamNG-style constraints: nodes at every joint, rigid beams between them,
+// spherical (ball-joint) constraint at lever pivot.
 // ═══════════════════════════════════════════════════════════════════════════
-const LEVER_H          = 1.6;       // shift lever height from pivot
-const LEVER_KNOB_R     = 0.12;
+
+// Shift lever dimensions (Honda OEM real specs)
+const LEVER_ABOVE       = 1.6;      // 160mm above ball pivot center
+const LEVER_BELOW       = 0.8;      // 80mm below ball pivot center
+const LEVER_KNOB_R      = 0.12;     // shift knob radius (Honda round LEA type)
+const BALL_R            = 0.15;     // ball joint radius (~∅30mm)
+const LEVER_SHAFT_TOP_R = 0.025;    // shaft radius at knob end
+const LEVER_SHAFT_BOT_R = 0.035;    // shaft radius at ball end
+
+// Linkage rod dimensions
+const CHANGE_ROD_R      = 0.06;     // 12mm dia change rod
+const ROD_END_BEARING_R = 0.08;     // rod-end bearing (heim joint)
 
 // Cabin reference position (center console, floor tunnel)
-// Z = longitudinal (negative = behind front axle), X = 0 (centered), Y = height
 const SHIFTER_X = 0;                // centered between seats
-const SHIFTER_Y = -1.4;             // floor tunnel height (~160mm above ground)
-const SHIFTER_Z = -8.0;             // ~800mm behind front axle
+const SHIFTER_Y = -1.4;             // floor tunnel height
+const SHIFTER_Z = -8.0;             // 800mm behind front axle centerline
 
+// Firewall reference
+const FIREWALL_Z = -2.0;
+
+// H-pattern gate knob displacements (Honda 5-speed)
+//   1  3  5  (forward = +Z)
+//   2  4  R  (backward = -Z)
+const GATE_POSITIONS: Record<number, [number, number]> = {
+  0: [0, 0],         // Neutral (spring-centered)
+  1: [-0.18, 0.12],  // 1st: left gate, forward
+  2: [-0.18, -0.12], // 2nd: left gate, back
+  3: [0, 0.12],      // 3rd: center gate, forward
+  4: [0, -0.12],     // 4th: center gate, back
+  5: [0.18, 0.12],   // 5th: right gate, forward
+};
+
+// Which shift fork rail is active for each gear
+function getActiveForkIdx(gear: number): number {
+  if (gear === 1 || gear === 2) return 0;   // fork 1-2
+  if (gear === 3 || gear === 4) return 1;   // fork 3-4
+  if (gear === 5) return 2;                 // fork 5th-R
+  return -1;
+}
+// Fork axial slide (+X = engage forward, -X = engage backward on mainshaft)
+function getForkSlide(gear: number): number {
+  if (gear === 1 || gear === 3 || gear === 5) return 0.12;
+  if (gear === 2 || gear === 4) return -0.12;
+  return 0;
+}
+
+// ── Linkage Rod (rigid beam between two 3D nodes) ──────────────────────
+// BeamNG "beam" style: cylinder + spherical rod-end bearings at each end
+function LinkageRod({
+  from, to, radius, color, label,
+}: {
+  from: [number, number, number]; to: [number, number, number];
+  radius: number; color: string; label?: string;
+}) {
+  const dx = to[0] - from[0], dy = to[1] - from[1], dz = to[2] - from[2];
+  const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  const midX = (from[0] + to[0]) / 2;
+  const midY = (from[1] + to[1]) / 2;
+  const midZ = (from[2] + to[2]) / 2;
+  const dir = new THREE.Vector3(dx, dy, dz).normalize();
+  const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  const euler = new THREE.Euler().setFromQuaternion(quat);
+  return (
+    <group>
+      <mesh position={[midX, midY, midZ]} rotation={euler}>
+        <cylinderGeometry args={[radius, radius, length, 8]} />
+        <meshStandardMaterial color={color} metalness={0.8} roughness={0.2} />
+      </mesh>
+      {[from, to].map((pt, i) => (
+        <mesh key={`re${i}`} position={pt}>
+          <sphereGeometry args={[ROD_END_BEARING_R, 8, 8]} />
+          <meshStandardMaterial color="#666" metalness={0.75} roughness={0.25} />
+        </mesh>
+      ))}
+      {label && (
+        <Label3D position={[midX, midY - 0.25, midZ]} color="#555" fontSize={7}>{label}</Label3D>
+      )}
+    </group>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CABIN SHIFTER WITH BALL-PIVOT + FULL MECHANICAL ROD LINKAGE
+// ═══════════════════════════════════════════════════════════════════════════
 function CabinShifter({
   currentGear, transX,
 }: {
   currentGear: number | string; transX: number;
 }) {
-  const gearNum = typeof currentGear === "number" ? currentGear : parseInt(String(currentGear)) || 0;
+  const gearNum = typeof currentGear === "number"
+    ? currentGear
+    : parseInt(String(currentGear)) || 0;
+  const [gateX, gateZ] = GATE_POSITIONS[gearNum] || [0, 0];
 
-  // H-pattern gate positions (Honda 5-speed):
-  //   1  3  5       X-offset (left/right in gate)
-  //   2  4  R       Z-offset (forward/back)
-  const gatePositions: Record<number, [number, number]> = {
-    0: [0, 0],        // Neutral (center)
-    1: [-0.18, 0.12], // 1st: left-forward
-    2: [-0.18, -0.12],// 2nd: left-back
-    3: [0, 0.12],     // 3rd: center-forward
-    4: [0, -0.12],    // 4th: center-back
-    5: [0.18, 0.12],  // 5th: right-forward
-  };
-  const [gateX, gateZ] = gatePositions[gearNum] || [0, 0];
+  // ── KINEMATICS: ball-pivot lever ──
+  // Lever tilts at the ball center.  Max angle ≈ atan2(0.18, 1.6) ≈ 6.4°
+  const tiltZ = Math.atan2(gateX, LEVER_ABOVE);    // lateral tilt
+  const tiltX = -Math.atan2(gateZ, LEVER_ABOVE);   // fore/aft tilt
 
-  // Transmission shift arm (cable endpoint)
-  const transShiftArmY = TRANS_H * 0.25;
+  // Rod attachment below ball moves OPPOSITE to knob (lever inversion)
+  const leverRatio = LEVER_BELOW / LEVER_ABOVE;     // 0.5
+  const rodEndX = -gateX * leverRatio;
+  const rodEndZ = -gateZ * leverRatio;
+
+  // ── CONSTRAINT NODES (BeamNG-style) ──
+  // N0: Ball pivot center (fixed to floor tunnel)
+  const N0: [number, number, number] = [SHIFTER_X, SHIFTER_Y, SHIFTER_Z];
+  // N1: Lever bottom / rod attach (moves with lever pivot)
+  const N1: [number, number, number] = [
+    SHIFTER_X + rodEndX,
+    SHIFTER_Y - LEVER_BELOW,
+    SHIFTER_Z + rodEndZ,
+  ];
+  // N2: Under-floor tunnel bracket (fixed support, 250mm forward of shifter)
+  const bracketY = SHIFTER_Y - LEVER_BELOW - 0.3;
+  const N2: [number, number, number] = [0, bracketY, SHIFTER_Z + 2.5];
+  // N3: Firewall bracket (fixed, where rod passes through firewall)
+  const N3: [number, number, number] = [0, bracketY + 0.15, FIREWALL_Z];
+  // N4: Transmission external shift arm (animated end)
+  const transArmY = TRANS_H * 0.35;
+  const N4: [number, number, number] = [transX + rodEndX * 1.5, transArmY, 0.35];
+
+  // ── TRANS-SIDE DERIVED STATE ──
+  const selectAngle = Math.atan2(rodEndX, 0.2) * 1.5;
+  const engageSlide = rodEndZ * 1.5;
+  const activeFork = getActiveForkIdx(gearNum);
+  const forkSlide = getForkSlide(gearNum);
 
   return (
     <group>
-      {/* ── CABIN FLOOR / CONSOLE REFERENCE ── */}
-      <group position={[SHIFTER_X, SHIFTER_Y, SHIFTER_Z]}>
-        {/* Center tunnel (floor pan section) */}
+      {/* ════════════════════════════════════════════════════════ */}
+      {/* ── CABIN FLOOR & BALL-PIVOT HOUSING (static) ───────── */}
+      {/* ════════════════════════════════════════════════════════ */}
+      <group position={N0}>
+        {/* Center tunnel floor pan */}
         <mesh>
           <boxGeometry args={[1.2, 0.08, 2.5]} />
           <meshStandardMaterial color="#1a1a1a" roughness={0.9} metalness={0.1} />
         </mesh>
-        {/* Console surround / boot ring */}
+        {/* Console surround / trim ring */}
         <mesh position={[0, 0.06, 0]}>
           <boxGeometry args={[0.5, 0.04, 0.6]} />
           <meshStandardMaterial color="#111" roughness={0.85} metalness={0.2} />
         </mesh>
-        {/* Gate plate */}
+        {/* Gate plate (aluminum) */}
         <mesh position={[0, 0.1, 0]}>
           <boxGeometry args={[0.6, 0.02, 0.5]} />
           <meshStandardMaterial color="#1a1a1a" metalness={0.6} roughness={0.4} />
         </mesh>
-        {/* Gate slot cutouts (H-pattern grooves) */}
-        {[[-0.18, 0], [0, 0], [0.18, 0]].map(([gx, gz], i) => (
-          <mesh key={`slot${i}`} position={[gx, 0.115, gz]}>
+        {/* H-pattern slot cutouts */}
+        {[[-0.18, 0], [0, 0], [0.18, 0]].map(([gx], i) => (
+          <mesh key={`slot${i}`} position={[gx, 0.115, 0]}>
             <boxGeometry args={[0.04, 0.015, 0.3]} />
             <meshStandardMaterial color="#333" roughness={0.9} />
           </mesh>
         ))}
-        {/* Crossgate (connects the 3 vertical slots) */}
+        {/* Crossgate (horizontal connector between slot columns) */}
         <mesh position={[0, 0.115, 0]}>
           <boxGeometry args={[0.5, 0.015, 0.04]} />
           <meshStandardMaterial color="#333" roughness={0.9} />
         </mesh>
 
-        {/* ── LEVER ASSEMBLY — animated per gear selection ── */}
-        <group position={[gateX, 0.12, gateZ]}>
-          {/* Lever shaft */}
-          <mesh position={[0, LEVER_H * 0.5, 0]}>
-            <cylinderGeometry args={[0.025, 0.035, LEVER_H, 8]} />
+        {/* Ball pivot housing (bolted cylinder on tunnel floor) */}
+        <mesh position={[0, -0.04, 0]}>
+          <cylinderGeometry args={[0.22, 0.24, 0.18, 16]} />
+          <meshStandardMaterial color="#333" metalness={0.7} roughness={0.3} />
+        </mesh>
+        {/* Ball seat cup (concave, captures the ball from below) */}
+        <mesh position={[0, -0.06, 0]} rotation={[Math.PI, 0, 0]}>
+          <sphereGeometry args={[BALL_R + 0.03, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
+          <meshStandardMaterial color="#555" metalness={0.6} roughness={0.3} side={THREE.DoubleSide} />
+        </mesh>
+        {/* Thrust washers (×2, sandwich the ball) */}
+        {[-0.01, 0.01].map((dy, i) => (
+          <mesh key={`tw${i}`} position={[0, dy, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[BALL_R - 0.02, 0.015, 6, 16]} />
+            <meshStandardMaterial color="#aaa" metalness={0.8} roughness={0.2} />
+          </mesh>
+        ))}
+        {/* Dust seal A (rubber, top side) */}
+        <mesh position={[0, 0.025, 0]}>
+          <torusGeometry args={[0.06, 0.02, 8, 16]} />
+          <meshStandardMaterial color="#222" roughness={0.95} />
+        </mesh>
+
+        {/* ══════════════════════════════════════════════════ */}
+        {/* ── LEVER: PIVOTS at ball center (rotation group) */}
+        {/* Group origin = ball center. rotation = tilt.     */}
+        {/* Everything above & below moves with the pivot.   */}
+        {/* ══════════════════════════════════════════════════ */}
+        <group rotation={[tiltX, 0, tiltZ]}>
+          {/* Ball sphere (the physical ball joint) */}
+          <mesh>
+            <sphereGeometry args={[BALL_R, 16, 12]} />
+            <meshStandardMaterial color="#999" metalness={0.9} roughness={0.1} />
+          </mesh>
+
+          {/* ── ABOVE BALL: lever shaft → shift knob ── */}
+          <mesh position={[0, LEVER_ABOVE * 0.5, 0]}>
+            <cylinderGeometry args={[LEVER_SHAFT_TOP_R, LEVER_SHAFT_BOT_R, LEVER_ABOVE, 8]} />
             <meshStandardMaterial color="#888" metalness={0.85} roughness={0.15} />
           </mesh>
-          {/* Shift knob (round, Honda OEM style) */}
-          <mesh position={[0, LEVER_H + 0.05, 0]}>
+          {/* Shift knob (Honda round type, 54102-S30-N21) */}
+          <mesh position={[0, LEVER_ABOVE + 0.05, 0]}>
             <sphereGeometry args={[LEVER_KNOB_R, 16, 12]} />
             <meshStandardMaterial color="#222" roughness={0.6} metalness={0.2} />
           </mesh>
-          {/* Leather shift boot (accordion) */}
-          <mesh position={[0, 0.15, 0]}>
-            <cylinderGeometry args={[0.14, 0.06, 0.25, 12]} />
-            <meshStandardMaterial color="#111" roughness={0.95} />
+
+          {/* ── BELOW BALL: lever arm → rod joint ── */}
+          <mesh position={[0, -LEVER_BELOW * 0.5, 0]}>
+            <cylinderGeometry args={[LEVER_SHAFT_BOT_R, 0.04, LEVER_BELOW, 8]} />
+            <meshStandardMaterial color="#777" metalness={0.8} roughness={0.2} />
+          </mesh>
+          {/* Rod-end bearing (heim joint) at lever bottom */}
+          <mesh position={[0, -LEVER_BELOW, 0]}>
+            <sphereGeometry args={[ROD_END_BEARING_R, 10, 10]} />
+            <meshStandardMaterial color="#666" metalness={0.75} roughness={0.25} />
+          </mesh>
+          {/* Rear joint collar (54117-SH3-000) */}
+          <mesh position={[0, -LEVER_BELOW + 0.04, 0]}>
+            <cylinderGeometry args={[0.045, 0.045, 0.06, 8]} />
+            <meshStandardMaterial color="#555" metalness={0.7} roughness={0.3} />
           </mesh>
         </group>
 
-        {/* Console label */}
-        <Label3D position={[0, -0.4, 0]} color="#555" fontSize={9}>SHIFTER (CENTER CONSOLE)</Label3D>
+        {/* Leather shift boot (static on housing, outside pivot group) */}
+        <mesh position={[0, 0.18, 0]}>
+          <cylinderGeometry args={[0.14, 0.06, 0.3, 12]} />
+          <meshStandardMaterial color="#111" roughness={0.95} />
+        </mesh>
+
+        <Label3D position={[0, -0.55, 0]} color="#555" fontSize={9}>
+          BALL-PIVOT SHIFTER (54110-SH3)
+        </Label3D>
       </group>
 
-      {/* ── SELECT CABLE (lateral L/R movement) ── */}
-      {/* Routes: shifter base → down through floor → forward under car → up to trans */}
-      <ShiftCable
-        from={[SHIFTER_X - 0.05, SHIFTER_Y - 0.04, SHIFTER_Z + 0.1]}
-        to={[transX + 0.1, transShiftArmY + 0.1, 0.4]}
-        color="#555"
-      />
+      {/* ════════════════════════════════════════════════════════ */}
+      {/* ── CHANGE ROD  (N1 → N2: lever bottom → floor bracket) */}
+      {/* OEM 54201-S04-G10 "Rod, Change"                        */}
+      {/* ════════════════════════════════════════════════════════ */}
+      <LinkageRod from={N1} to={N2} radius={CHANGE_ROD_R} color="#999" label="CHANGE ROD" />
 
-      {/* ── SHIFT CABLE (fore/aft engagement) ── */}
-      <ShiftCable
-        from={[SHIFTER_X + 0.05, SHIFTER_Y - 0.04, SHIFTER_Z - 0.1]}
-        to={[transX - 0.1, transShiftArmY, 0.35]}
-        color="#666"
-      />
-
-      {/* Cable bracket on transmission */}
-      <mesh position={[transX, transShiftArmY + 0.05, 0.38]}>
-        <boxGeometry args={[0.2, 0.08, 0.1]} />
-        <meshStandardMaterial color="#444" metalness={0.7} roughness={0.3} />
-      </mesh>
-      <Label3D position={[transX, transShiftArmY + 0.25, 0.4]} color="#555" fontSize={8}>CABLE BRACKET</Label3D>
-    </group>
-  );
-}
-
-// Shift cable path — realistic routing from cabin to engine bay
-function ShiftCable({
-  from, to, color,
-}: {
-  from: [number, number, number]; to: [number, number, number]; color: string;
-}) {
-  const points = useMemo(() => {
-    const [x0, y0, z0] = from;
-    const [x1, y1, z1] = to;
-    const floorY = -TIRE_OR + 0.2;  // just above ground plane
-    // Route: down from shifter → along floor tunnel → forward under car →
-    //        rise through firewall → to trans shift arm
-    const pts = [
-      new THREE.Vector3(x0, y0, z0),
-      new THREE.Vector3(x0, floorY, z0),                         // drop to floor
-      new THREE.Vector3(x0 * 0.5 + x1 * 0.5, floorY, z0 * 0.6), // under floor, heading forward
-      new THREE.Vector3(x1, floorY, z1 * 0.5 + z0 * 0.1),        // approaching engine bay
-      new THREE.Vector3(x1, y1 + 0.4, z1 * 0.8),                 // rise through firewall
-      new THREE.Vector3(x1, y1, z1),                              // attach to trans
-    ];
-    return new THREE.CatmullRomCurve3(pts).getPoints(32);
-  }, [from, to]);
-
-  const lineGeo = useMemo(() => {
-    return new THREE.BufferGeometry().setFromPoints(points);
-  }, [points]);
-
-  const lineObj = useMemo(() => {
-    const mat = new THREE.LineBasicMaterial({ color });
-    return new THREE.Line(lineGeo, mat);
-  }, [lineGeo, color]);
-
-  return (
-    <group>
-      <primitive object={lineObj} />
-      {/* Cable housing ferrules at each end */}
-      {[from, to].map((pt, i) => (
-        <mesh key={`ferrule${i}`} position={pt}>
-          <cylinderGeometry args={[0.025, 0.025, 0.06, 6]} />
-          <meshStandardMaterial color="#777" metalness={0.8} roughness={0.2} />
+      {/* Floor tunnel bracket (static support mount) */}
+      <group position={N2}>
+        <mesh>
+          <boxGeometry args={[0.28, 0.12, 0.08]} />
+          <meshStandardMaterial color="#333" metalness={0.6} roughness={0.4} />
         </mesh>
-      ))}
+        <mesh>
+          <torusGeometry args={[CHANGE_ROD_R * 1.5, 0.02, 8, 12]} />
+          <meshStandardMaterial color="#222" roughness={0.95} />
+        </mesh>
+      </group>
+
+      {/* ════════════════════════════════════════════════════════ */}
+      {/* ── EXTENSION ROD (N2 → N3: bracket → firewall)         */}
+      {/* OEM 54301-S04-G10 "Extension, Change"                  */}
+      {/* ════════════════════════════════════════════════════════ */}
+      <LinkageRod from={N2} to={N3} radius={CHANGE_ROD_R} color="#aaa" />
+
+      {/* Firewall bracket + rubber grommet + boot */}
+      <group position={N3}>
+        <mesh>
+          <boxGeometry args={[0.35, 0.18, 0.1]} />
+          <meshStandardMaterial color="#333" metalness={0.6} roughness={0.4} />
+        </mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[CHANGE_ROD_R * 1.8, 0.03, 8, 16]} />
+          <meshStandardMaterial color="#1a1a1a" roughness={0.95} />
+        </mesh>
+        {/* Shift rod boot (24316-PS1-000) */}
+        <mesh position={[0, 0, -0.06]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[CHANGE_ROD_R * 2.2, CHANGE_ROD_R * 1.5, 0.12, 10]} />
+          <meshStandardMaterial color="#222" roughness={0.9} />
+        </mesh>
+        <Label3D position={[0, -0.25, 0]} color="#555" fontSize={8}>FIREWALL</Label3D>
+      </group>
+
+      {/* ════════════════════════════════════════════════════════ */}
+      {/* ── ENGINE-BAY ROD (N3 → N4: firewall → trans arm)      */}
+      {/* ════════════════════════════════════════════════════════ */}
+      <LinkageRod from={N3} to={N4} radius={CHANGE_ROD_R} color="#bbb" label="EXTENSION" />
+
+      {/* ════════════════════════════════════════════════════════ */}
+      {/* ── TRANSMISSION EXTERNAL SHIFT ARM ──────────────────── */}
+      {/* ════════════════════════════════════════════════════════ */}
+      <group position={[transX, transArmY, 0.35]}>
+        {/* Mounting bracket (bolted to trans case top) */}
+        <mesh>
+          <boxGeometry args={[0.25, 0.12, 0.15]} />
+          <meshStandardMaterial color="#444" metalness={0.7} roughness={0.3} />
+        </mesh>
+        {/* External arm (animated — rotates for gate select) */}
+        <group rotation={[0, 0, selectAngle]}>
+          <mesh position={[0, 0.15, 0]}>
+            <boxGeometry args={[0.05, 0.25, 0.04]} />
+            <meshStandardMaterial color="#aaa" metalness={0.8} roughness={0.2} />
+          </mesh>
+          {/* Arm pivot pin */}
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.035, 0.035, 0.18, 8]} />
+            <meshStandardMaterial color="#888" metalness={0.85} roughness={0.15} />
+          </mesh>
+        </group>
+        {/* Shift shaft (enters trans case — animated axial slide for engage) */}
+        <mesh position={[0, -0.12, engageSlide]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.03, 0.03, 0.25, 8]} />
+          <meshStandardMaterial color="#ccc" metalness={0.9} roughness={0.1} />
+        </mesh>
+        {/* Shaft oil seal */}
+        <mesh position={[0, -0.06, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.04, 0.012, 6, 12]} />
+          <meshStandardMaterial color="#222" roughness={0.9} />
+        </mesh>
+        <Label3D position={[0, 0.42, 0]} color="#555" fontSize={8}>SHIFT ARM</Label3D>
+      </group>
+
+      {/* ════════════════════════════════════════════════════════ */}
+      {/* ── TRANSMISSION INTERNAL SHIFT FORKS (animated)         */}
+      {/* These overlay the existing TransmissionCase forks with  */}
+      {/* physically accurate per-gear engagement animation.      */}
+      {/* ════════════════════════════════════════════════════════ */}
+      <group position={[transX, 0, 0]}>
+        {[0, 1, 2].map((forkIdx) => {
+          const railZ = (forkIdx - 1) * TRANS_L * 0.12;
+          const isActive = forkIdx === activeFork;
+          const slide = isActive ? forkSlide : 0;
+          const forkColor = isActive ? "#44ff88" : "#999";
+          const forkEmissive = isActive ? "#22aa44" : "#000";
+          const forkLabels = ["FORK 1-2", "FORK 3-4", "FORK 5-R"];
+          return (
+            <group key={`afork${forkIdx}`}>
+              {/* Fork body (slides along rail) */}
+              <mesh position={[slide, TRANS_H * 0.16, railZ]}>
+                <boxGeometry args={[0.04, TRANS_H * 0.26, 0.05]} />
+                <meshStandardMaterial
+                  color={forkColor} metalness={0.8} roughness={0.2}
+                  emissive={forkEmissive} emissiveIntensity={isActive ? 0.5 : 0}
+                />
+              </mesh>
+              {/* Fork prongs (Y-shape straddling synchronizer sleeve) */}
+              {[-1, 1].map((side) => (
+                <mesh
+                  key={`prong${forkIdx}_${side}`}
+                  position={[slide, TRANS_H * 0.08, railZ + side * 0.06]}
+                >
+                  <boxGeometry args={[0.03, 0.06, 0.025]} />
+                  <meshStandardMaterial
+                    color={forkColor} metalness={0.75} roughness={0.25}
+                    emissive={forkEmissive} emissiveIntensity={isActive ? 0.4 : 0}
+                  />
+                </mesh>
+              ))}
+              {/* Shift fork rail (the rod the fork rides on) */}
+              <mesh rotation={[0, 0, Math.PI / 2]} position={[0, TRANS_H * 0.16, railZ]}>
+                <cylinderGeometry args={[0.015, 0.015, TRANS_L * 0.35, 6]} />
+                <meshStandardMaterial color="#888" metalness={0.85} roughness={0.15} transparent opacity={0.4} />
+              </mesh>
+              {/* Detent ball + spring (click-locks into gear position) */}
+              <mesh position={[0, TRANS_H * 0.3, railZ]}>
+                <sphereGeometry args={[0.02, 8, 8]} />
+                <meshStandardMaterial
+                  color={isActive ? "#ffcc00" : "#aaa"} metalness={0.9} roughness={0.1}
+                />
+              </mesh>
+              {/* Detent spring (compressed when ball is pushed down) */}
+              <mesh position={[0, TRANS_H * 0.34, railZ]}>
+                <cylinderGeometry args={[0.012, 0.012, 0.06, 6]} />
+                <meshStandardMaterial color="#bbb" metalness={0.7} roughness={0.3} />
+              </mesh>
+              {/* Fork label */}
+              <Label3D position={[0, TRANS_H * 0.42, railZ]} color={isActive ? "#44ff88" : "#666"} fontSize={6}>
+                {forkLabels[forkIdx]}
+              </Label3D>
+            </group>
+          );
+        })}
+        {/* Interlock plate (prevents two forks engaging simultaneously) */}
+        <mesh position={[0, TRANS_H * 0.24, 0]}>
+          <boxGeometry args={[0.02, 0.08, TRANS_L * 0.35]} />
+          <meshStandardMaterial color="#aaa" metalness={0.7} roughness={0.3} transparent opacity={0.6} />
+        </mesh>
+      </group>
     </group>
   );
 }
@@ -1539,6 +1810,307 @@ function PassengerFrontAssembly({
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// B16A2 ENGINE BLOCK — translucent with visible rotating assembly
+// Transverse-mounted: crankshaft along X axis, cylinders point up (+Y)
+// ═══════════════════════════════════════════════════════════════════════════
+function EngineBlock({
+  position, rotationAngle,
+}: {
+  position: [number, number, number]; rotationAngle: number;
+}) {
+  const crankRef = useRef<THREE.Group>(null!);
+
+  useFrame(() => {
+    if (crankRef.current) crankRef.current.rotation.x = rotationAngle;
+  });
+
+  // Cylinder X offsets: 4 bores centered within block
+  const cylOffsets = useMemo(() => {
+    const startX = -1.5 * BORE_SPACING;
+    return [0, 1, 2, 3].map(i => startX + i * BORE_SPACING);
+  }, []);
+
+  const blockTotalH = BLOCK_DECK_H + BLOCK_SUMP_H;
+  const blockCenterY = (BLOCK_DECK_H - BLOCK_SUMP_H) / 2;
+
+  return (
+    <group position={position}>
+      {/* ── BLOCK SHELL (translucent) ── */}
+      <mesh position={[0, blockCenterY, 0]}>
+        <boxGeometry args={[BLOCK_L, blockTotalH, BLOCK_D]} />
+        <meshPhysicalMaterial
+          color="#4488cc"
+          transparent
+          opacity={0.10}
+          roughness={0.3}
+          metalness={0.4}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      {/* Block ribbing (casting detail) */}
+      {[-0.3, -0.1, 0.1, 0.3].map((f, i) => (
+        <mesh key={`brib${i}`} position={[f * BLOCK_L, blockCenterY, 0]}>
+          <boxGeometry args={[0.02, blockTotalH * 1.01, BLOCK_D * 1.01]} />
+          <meshPhysicalMaterial color="#5599dd" transparent opacity={0.06} side={THREE.DoubleSide} />
+        </mesh>
+      ))}
+
+      {/* ── CYLINDER HEAD (translucent, sits on top of block) ── */}
+      <mesh position={[0, BLOCK_DECK_H + HEAD_H / 2, 0]}>
+        <boxGeometry args={[BLOCK_L * 0.95, HEAD_H, BLOCK_D * 0.9]} />
+        <meshPhysicalMaterial
+          color="#6699cc"
+          transparent
+          opacity={0.08}
+          roughness={0.3}
+          metalness={0.4}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      {/* Cam cover (DOHC — two cam humps) */}
+      {[-0.35, 0.35].map((zf, i) => (
+        <mesh key={`cam${i}`} position={[0, BLOCK_DECK_H + HEAD_H + 0.15, zf * BLOCK_D]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.18, 0.18, BLOCK_L * 0.88, 12, 1, false, 0, Math.PI]} />
+          <meshPhysicalMaterial color="#cc3333" transparent opacity={0.15} side={THREE.DoubleSide} />
+        </mesh>
+      ))}
+
+      {/* VTEC solenoid (back of head) */}
+      <mesh position={[BLOCK_L * 0.25, BLOCK_DECK_H + HEAD_H * 0.5, -BLOCK_D * 0.5 - 0.08]}>
+        <cylinderGeometry args={[0.06, 0.06, 0.15, 10]} />
+        <meshStandardMaterial color="#333" metalness={0.7} roughness={0.3} />
+      </mesh>
+      <Label3D position={[BLOCK_L * 0.25, BLOCK_DECK_H + HEAD_H * 0.5 - 0.2, -BLOCK_D * 0.5 - 0.15]} color="#ff6644" fontSize={7}>VTEC</Label3D>
+
+      {/* ── CYLINDER BORES (4 dark cylinders inside block) ── */}
+      {cylOffsets.map((cx, i) => (
+        <group key={`bore${i}`}>
+          {/* Bore liner (dark cylinder) */}
+          <mesh position={[cx, BLOCK_DECK_H * 0.5 + 0.1, 0]} rotation={[0, 0, 0]}>
+            <cylinderGeometry args={[BORE / 2, BORE / 2, BLOCK_DECK_H * 0.75, 24, 1, true]} />
+            <meshStandardMaterial color="#1a1a1a" roughness={0.7} metalness={0.3} side={THREE.DoubleSide} transparent opacity={0.3} />
+          </mesh>
+          {/* Bore top ring (deck surface opening) */}
+          <mesh position={[cx, BLOCK_DECK_H, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[BORE / 2, 0.008, 6, 24]} />
+            <meshStandardMaterial color="#555" metalness={0.7} roughness={0.3} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* ── CRANKSHAFT + ROTATING ASSEMBLY (animated) ── */}
+      <group ref={crankRef}>
+        {/* Main journals (5 journals for 4 cylinders) */}
+        {Array.from({ length: 5 }, (_, i) => {
+          const jx = -2 * BORE_SPACING + i * BORE_SPACING;
+          return (
+            <mesh key={`mj${i}`} position={[jx, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+              <cylinderGeometry args={[CRANK_MAIN_R, CRANK_MAIN_R, BORE_SPACING * 0.35, 16]} />
+              <meshStandardMaterial color="#bbb" metalness={0.9} roughness={0.1} />
+            </mesh>
+          );
+        })}
+
+        {/* Crank throws + pins + counterweights + connecting rods + pistons */}
+        {cylOffsets.map((cx, i) => {
+          const phaseAngle = CRANK_OFFSETS[i];
+          return (
+            <CrankThrowAssembly
+              key={`cta${i}`}
+              cylinderX={cx}
+              phaseAngle={phaseAngle}
+              rotationAngle={rotationAngle}
+              cylIndex={i}
+            />
+          );
+        })}
+
+        {/* Crank snout (timing belt pulley end) */}
+        <mesh position={[BLOCK_L * 0.5 + 0.1, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[CRANK_MAIN_R * 0.8, CRANK_MAIN_R * 0.8, 0.2, 12]} />
+          <meshStandardMaterial color="#888" metalness={0.85} roughness={0.15} />
+        </mesh>
+        {/* Timing belt sprocket */}
+        <mesh position={[BLOCK_L * 0.5 + 0.22, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.35, 0.35, 0.05, 24]} />
+          <meshStandardMaterial color="#555" metalness={0.7} roughness={0.3} />
+        </mesh>
+      </group>
+
+      {/* ── OIL PAN (below block) ── */}
+      <mesh position={[0, -BLOCK_SUMP_H - 0.25, 0]}>
+        <boxGeometry args={[BLOCK_L * 0.85, 0.5, BLOCK_D * 0.7]} />
+        <meshPhysicalMaterial color="#3a3a3a" transparent opacity={0.15} roughness={0.4} metalness={0.3} side={THREE.DoubleSide} />
+      </mesh>
+      {/* Drain plug */}
+      <mesh position={[0, -BLOCK_SUMP_H - 0.52, 0]}>
+        <cylinderGeometry args={[0.03, 0.03, 0.06, 6]} />
+        <meshStandardMaterial color="#555" metalness={0.85} roughness={0.15} />
+      </mesh>
+
+      {/* ── INTAKE MANIFOLD (front of head) ── */}
+      <group position={[0, BLOCK_DECK_H + HEAD_H * 0.4, BLOCK_D * 0.5 + 0.15]}>
+        {cylOffsets.map((cx, i) => (
+          <mesh key={`runner${i}`} position={[cx, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.08, 0.10, 0.3, 10]} />
+            <meshPhysicalMaterial color="#888" transparent opacity={0.2} metalness={0.6} roughness={0.3} side={THREE.DoubleSide} />
+          </mesh>
+        ))}
+        {/* Plenum */}
+        <mesh position={[0, 0.08, 0.2]}>
+          <boxGeometry args={[BLOCK_L * 0.75, 0.35, 0.2]} />
+          <meshPhysicalMaterial color="#999" transparent opacity={0.12} metalness={0.5} roughness={0.3} side={THREE.DoubleSide} />
+        </mesh>
+        <Label3D position={[0, 0.35, 0.2]} color="#666" fontSize={8}>INTAKE MANIFOLD</Label3D>
+      </group>
+
+      {/* ── EXHAUST MANIFOLD (rear of head) ── */}
+      <group position={[0, BLOCK_DECK_H + HEAD_H * 0.3, -BLOCK_D * 0.5 - 0.15]}>
+        {cylOffsets.map((cx, i) => (
+          <mesh key={`exhport${i}`} position={[cx, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.07, 0.08, 0.2, 10]} />
+            <meshStandardMaterial color="#8B4513" metalness={0.5} roughness={0.6} transparent opacity={0.4} />
+          </mesh>
+        ))}
+        {/* Collector (4-1) */}
+        <mesh position={[0, -0.2, -0.15]} rotation={[Math.PI / 4, 0, 0]}>
+          <cylinderGeometry args={[0.12, 0.08, 0.35, 10]} />
+          <meshStandardMaterial color="#8B4513" metalness={0.4} roughness={0.7} transparent opacity={0.3} />
+        </mesh>
+        <Label3D position={[0, -0.45, -0.2]} color="#8B4513" fontSize={8}>EXHAUST HEADER</Label3D>
+      </group>
+
+      {/* ── LABELS ── */}
+      <Label3D position={[0, BLOCK_DECK_H + HEAD_H + 0.6, 0]} color="#4488cc" fontSize={12}>
+        B16A2 DOHC VTEC
+      </Label3D>
+      <Label3D position={[0, BLOCK_DECK_H + HEAD_H + 0.35, 0]} color="#4488cc" fontSize={9}>
+        81mm × 77.4mm — 1595cc
+      </Label3D>
+      <Label3D position={[0, -BLOCK_SUMP_H - 0.9, 0]} color="#555" fontSize={8}>
+        10.2:1 COMPRESSION
+      </Label3D>
+    </group>
+  );
+}
+
+// ── CRANK THROW + CON ROD + PISTON (single cylinder — positioned by parent) ──
+function CrankThrowAssembly({
+  cylinderX, phaseAngle, rotationAngle, cylIndex,
+}: {
+  cylinderX: number; phaseAngle: number; rotationAngle: number; cylIndex: number;
+}) {
+  const pistonRef = useRef<THREE.Group>(null!);
+  const conRodRef = useRef<THREE.Group>(null!);
+  const throwRef = useRef<THREE.Group>(null!);
+
+  useFrame(() => {
+    // Angle for this cylinder's crank throw
+    const angle = rotationAngle + phaseAngle;
+
+    // Crank pin position (in the YZ plane since crankshaft is X)
+    const pinY = CRANK_THROW * Math.cos(angle);
+    const pinZ = CRANK_THROW * Math.sin(angle);
+
+    // Piston position (slider-crank kinematics)
+    const sinA = CRANK_THROW * Math.sin(angle);
+    const pistonY = CRANK_THROW * Math.cos(angle) +
+      Math.sqrt(Math.max(CON_ROD_L * CON_ROD_L - sinA * sinA, 0.001));
+
+    // Con rod angle (from piston pin to crank pin)
+    const conRodAngle = Math.atan2(pinZ, pistonY - pinY);
+
+    // Con rod center position
+    const conRodCY = (pistonY + pinY) / 2;
+    const conRodCZ = pinZ / 2;
+
+    if (pistonRef.current) {
+      pistonRef.current.position.y = pistonY;
+    }
+
+    if (conRodRef.current) {
+      conRodRef.current.position.y = conRodCY;
+      conRodRef.current.position.z = conRodCZ;
+      conRodRef.current.rotation.x = -conRodAngle;
+    }
+
+    if (throwRef.current) {
+      throwRef.current.position.y = pinY;
+      throwRef.current.position.z = pinZ;
+    }
+  });
+
+  const colors = ['#ff6644', '#44cc88', '#4488ff', '#ffaa22'];
+  const pistonColor = colors[cylIndex];
+
+  return (
+    <group position={[cylinderX, 0, 0]}>
+      {/* ── CRANK PIN (moves with crank rotation) ── */}
+      <group ref={throwRef}>
+        {/* Crank pin journal */}
+        <mesh rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[CRANK_PIN_R, CRANK_PIN_R, BORE_SPACING * 0.5, 12]} />
+          <meshStandardMaterial color="#ccc" metalness={0.9} roughness={0.1} />
+        </mesh>
+        {/* Counterweights (×2 flanking the pin) */}
+        {[-0.3, 0.3].map((dx, i) => (
+          <mesh key={`cw${i}`} position={[dx * BORE_SPACING, -CW_R * 0.3, 0]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[CW_R, CW_R * 0.85, CW_THICK, 12, 1, false, Math.PI * 0.6, Math.PI * 0.8]} />
+            <meshStandardMaterial color="#999" metalness={0.8} roughness={0.2} />
+          </mesh>
+        ))}
+      </group>
+
+      {/* ── CONNECTING ROD (animated) ── */}
+      <group ref={conRodRef}>
+        {/* Rod body (I-beam profile approximated as box) */}
+        <mesh>
+          <boxGeometry args={[0.04, CON_ROD_L, 0.025]} />
+          <meshStandardMaterial color="#bbbbbb" metalness={0.85} roughness={0.15} />
+        </mesh>
+        {/* Big end (crank pin end) */}
+        <mesh position={[0, -CON_ROD_L / 2, 0]} rotation={[0, 0, 0]}>
+          <torusGeometry args={[CRANK_PIN_R * 1.1, 0.015, 6, 16]} />
+          <meshStandardMaterial color="#aaa" metalness={0.85} roughness={0.15} />
+        </mesh>
+        {/* Small end (piston pin end) */}
+        <mesh position={[0, CON_ROD_L / 2, 0]} rotation={[0, 0, 0]}>
+          <torusGeometry args={[0.04, 0.012, 6, 12]} />
+          <meshStandardMaterial color="#aaa" metalness={0.85} roughness={0.15} />
+        </mesh>
+      </group>
+
+      {/* ── PISTON (animated — reciprocates in Y) ── */}
+      <group ref={pistonRef}>
+        {/* Piston crown + skirt */}
+        <mesh>
+          <cylinderGeometry args={[BORE / 2 - 0.005, BORE / 2 - 0.008, PISTON_H, 20]} />
+          <meshStandardMaterial color={pistonColor} metalness={0.75} roughness={0.25} transparent opacity={0.8} />
+        </mesh>
+        {/* Piston rings (3 — compression × 2, oil × 1) */}
+        {[0.10, 0.07, 0.02].map((yOff, ri) => (
+          <mesh key={`ring${ri}`} position={[0, yOff, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[BORE / 2 - 0.003, 0.006, 4, 24]} />
+            <meshStandardMaterial
+              color={ri < 2 ? "#888" : "#555"}
+              metalness={0.9}
+              roughness={0.1}
+            />
+          </mesh>
+        ))}
+        {/* Piston pin (wrist pin) */}
+        <mesh rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.03, 0.03, BORE * 0.7, 8]} />
+          <meshStandardMaterial color="#ddd" metalness={0.9} roughness={0.1} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
 function GroundAndEnvironment() {
   return (
     <group>
@@ -1668,6 +2240,12 @@ function DrivetrainScene(props: DrivetrainView3DProps) {
       {/* ── FLYWHEEL ── */}
       <Flywheel position={[fwX, 0, 0]} rotationAngle={fwRotRef.current} />
 
+      {/* ── B16A2 ENGINE BLOCK (translucent with rotating assembly) ── */}
+      <EngineBlock
+        position={[fwX - FW_THICK / 2 - BLOCK_L / 2 - 0.15, 0, 0]}
+        rotationAngle={fwRotRef.current}
+      />
+
       {/* ── CABIN SHIFTER + SHIFT CABLES (BeamNG-style prop) ── */}
       <CabinShifter currentGear={currentGear} transX={transX} />
 
@@ -1739,6 +2317,7 @@ const VIEW_PRESETS: ViewPreset[] = [
   { label: "Top",         position: [0, 18, -6],      target: [0, 0, -6] },
   { label: "Tire Close",  position: [9, 2, 6],        target: [9, 0, 0] },
   { label: "Trans Close", position: [-2, 2, 6],       target: [-2, 0, 0] },
+  { label: "Engine",      position: [-10, 4, 6],      target: [-8, 1, 0] },
   { label: "Flywheel",    position: [-6, 1, 5],       target: [-4, 0, 0] },
   { label: "Rear Axle",   position: [0, 4, -20],      target: [0, 0, -26] },
   { label: "Shifter",     position: [2, 2, -5],       target: [0, -1, -8] },
