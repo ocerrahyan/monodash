@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext, lazy, Suspense, Component, ErrorInfo, ReactNode } from "react";
 import { Link } from "wouter";
 import { type EngineState } from "@/lib/engineSim";
+import { getStockTorqueMap } from "@/lib/engineSim";
 import { sharedSim } from "@/lib/sharedSim";
 import { EngineSound } from "@/lib/engineSound";
 import { Button } from "@/components/ui/button";
 import { FWDDrivetrainVisual } from "../components/FWDDrivetrainVisual";
+import { DynoCurveEditor } from "@/components/DynoCurveEditor";
 import { useAiMode } from "@/lib/aiMode";
 import { fetchAiCorrections, defaultCorrections, type AiCorrectionFactors } from "@/lib/aiPhysicsClient";
 import { log } from '@shared/logger';
@@ -1240,6 +1242,24 @@ export default function Dashboard() {
   const [aiNotes, setAiNotes] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const aiPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Dyno Curve Editor state ──
+  const [dynoOpen, setDynoOpen] = useState(false);
+  const [customTorqueMap, setCustomTorqueMap] = useState<[number, number][] | null>(
+    () => sharedSim.getCustomTorqueMap()
+  );
+
+  const handleTorqueMapChange = useCallback((map: [number, number][]) => {
+    setCustomTorqueMap(map);
+    sharedSim.setCustomTorqueMap(map);
+    log.info('dashboard', 'Custom torque map updated', { points: map.length });
+  }, []);
+
+  const handleTorqueMapReset = useCallback(() => {
+    setCustomTorqueMap(null);
+    sharedSim.setCustomTorqueMap(null);
+    log.info('dashboard', 'Torque map reset to stock');
+  }, []);
   
   // Drag and drop state for gauges
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -1615,6 +1635,34 @@ export default function Dashboard() {
           boostPsi={state.boostPsi}
           turboEnabled={state.turboEnabled}
         />
+
+          {/* ── Dyno Curve Editor ── */}
+          <div className="col-span-4 px-3 py-2">
+            <button
+              onClick={() => setDynoOpen(o => !o)}
+              className="w-full flex items-center justify-between py-1.5 px-2 text-[10px] tracking-[0.2em] uppercase font-mono border border-white/15 hover:border-white/30 transition-colors"
+              style={{ background: dynoOpen ? '#111' : 'transparent' }}
+            >
+              <span className="flex items-center gap-2">
+                <span style={{ color: '#f59e0b', opacity: 0.8 }}>📈</span>
+                <span className="opacity-60">DYNO CURVE EDITOR</span>
+                {customTorqueMap && <span className="text-amber-400/80 text-[8px]">● TUNED</span>}
+              </span>
+              <span className="opacity-40">{dynoOpen ? '▼' : '▶'}</span>
+            </button>
+            {dynoOpen && (
+              <div className="mt-2 pb-1">
+                <DynoCurveEditor
+                  customMap={customTorqueMap}
+                  onChange={handleTorqueMapChange}
+                  onReset={handleTorqueMapReset}
+                  currentRpm={state.rpm}
+                  currentTorque={state.torque}
+                  currentHp={state.horsepower}
+                />
+              </div>
+            )}
+          </div>
 
           {/* FWD Drivetrain Visual (Front 3/4 View) */}
           <div className="flex flex-col items-center py-2 col-span-4">

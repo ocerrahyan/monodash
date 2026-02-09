@@ -1707,26 +1707,32 @@ function getContactPatchArea(widthMm: number, aspectRatio: number, loadN: number
   return sectionWidthIn * patchLengthIn * deflectionFactor * 0.7;
 }
 
-const B16A2_TORQUE_MAP: [number, number][] = [
+export const B16A2_TORQUE_MAP: [number, number][] = [
   [750, 40], [1000, 50], [1500, 58], [2000, 67], [2500, 75],
   [3000, 82], [3500, 88], [4000, 93], [4500, 96], [5000, 99],
   [5500, 103], [6000, 107], [6500, 109], [7000, 111], [7500, 111],
   [7600, 110.5], [8000, 100], [8200, 95],
 ];
 
+/** Get a fresh copy of the stock torque map for UI editing */
+export function getStockTorqueMap(): [number, number][] {
+  return B16A2_TORQUE_MAP.map(([r, t]) => [r, t]);
+}
+
 // Stock B16A2 compression ratio for baseline
 const STOCK_COMPRESSION_RATIO = 10.2;
 
-function getB16Torque(rpm: number, throttlePos: number, compressionRatio: number = STOCK_COMPRESSION_RATIO): number {
-  const clamped = clamp(rpm, B16A2_TORQUE_MAP[0][0], B16A2_TORQUE_MAP[B16A2_TORQUE_MAP.length - 1][0]);
+function getB16Torque(rpm: number, throttlePos: number, compressionRatio: number = STOCK_COMPRESSION_RATIO, customMap?: [number, number][] | null): number {
+  const tMap = customMap || B16A2_TORQUE_MAP;
+  const clamped = clamp(rpm, tMap[0][0], tMap[tMap.length - 1][0]);
   let i = 0;
-  while (i < B16A2_TORQUE_MAP.length - 1 && B16A2_TORQUE_MAP[i + 1][0] <= clamped) i++;
-  if (i >= B16A2_TORQUE_MAP.length - 1) {
-    const baseTorque = B16A2_TORQUE_MAP[B16A2_TORQUE_MAP.length - 1][1] * throttlePos;
+  while (i < tMap.length - 1 && tMap[i + 1][0] <= clamped) i++;
+  if (i >= tMap.length - 1) {
+    const baseTorque = tMap[tMap.length - 1][1] * throttlePos;
     return baseTorque * getCompressionMultiplier(compressionRatio);
   }
-  const [r0, t0] = B16A2_TORQUE_MAP[i];
-  const [r1, t1] = B16A2_TORQUE_MAP[i + 1];
+  const [r0, t0] = tMap[i];
+  const [r1, t1] = tMap[i + 1];
   const frac = (clamped - r0) / (r1 - r0);
   const wotTorque = t0 + (t1 - t0) * frac;
   const baseTorque = wotTorque * (0.1 + 0.9 * throttlePos);
@@ -1942,6 +1948,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
   let derived = computeDerived(config);
   log.info('engineSim', 'Simulation created', { redline: config.redlineRpm, mass: config.vehicleMassLb, drive: config.drivetrainType });
   let aiCorrections = { gripMultiplier: 1.0, weightTransferMultiplier: 1.0, slipMultiplier: 1.0, dragMultiplier: 1.0, tractionMultiplier: 1.0 };
+  let customTorqueMap: [number, number][] | null = null;
 
   let crankAngle = 0;
   let currentRpm = config.targetIdleRpm;
@@ -2257,7 +2264,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
         qmElapsedTime += dt;
         
         // Calculate what engine is trying to push to wheels (INCLUDING forced induction)
-        let launchTorqueFtLb = getB16Torque(currentRpm, throttle, config.compressionRatio);
+        let launchTorqueFtLb = getB16Torque(currentRpm, throttle, config.compressionRatio, customTorqueMap);
         const camMult = getCamTorqueMultiplier(currentRpm, vtecActive, config);
         launchTorqueFtLb *= camMult;
         
@@ -2355,7 +2362,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
         }
 
         if (shiftTimer <= 0) {
-          let torqueFtLb = getB16Torque(currentRpm, throttle, config.compressionRatio);
+          let torqueFtLb = getB16Torque(currentRpm, throttle, config.compressionRatio, customTorqueMap);
           const camMultiplier = getCamTorqueMultiplier(currentRpm, vtecActive, config);
           torqueFtLb *= camMultiplier;
 
@@ -2624,7 +2631,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       finalGrip = effectiveGrip * patchMultiplier;
       maxTractionForceN = drivenAxleLoadN * finalGrip * aiCorrections.gripMultiplier;
 
-      let freeRevTorque = getB16Torque(currentRpm, throttle, config.compressionRatio);
+      let freeRevTorque = getB16Torque(currentRpm, throttle, config.compressionRatio, customTorqueMap);
       const freeRevCamMult = getCamTorqueMultiplier(currentRpm, vtecActive, config);
       freeRevTorque *= freeRevCamMult;
 
@@ -2734,7 +2741,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     const intakeValveLift = getValveLift(crankAngle, true) * (configIntakeLift / stockIntakeLift);
     const exhaustValveLift = getValveLift(crankAngle, false) * (configExhaustLift / stockExhaustLift);
 
-    let torque = getB16Torque(currentRpm, throttle, config.compressionRatio);
+    let torque = getB16Torque(currentRpm, throttle, config.compressionRatio, customTorqueMap);
     const displayCamMultiplier = getCamTorqueMultiplier(currentRpm, vtecActive, config);
     torque *= displayCamMultiplier;
 
@@ -3006,5 +3013,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
 
   function setAiCorrections(c: { gripMultiplier: number; weightTransferMultiplier: number; slipMultiplier: number; dragMultiplier: number; tractionMultiplier: number }) { aiCorrections = c; }
   function getAiCorrections() { return aiCorrections; }
-  return { update, setThrottle, startQuarterMile, launchCar, resetQuarterMile, isRunning: () => running, setEcuConfig, getEcuConfig, setAiCorrections, getAiCorrections };
+  function setCustomTorqueMap(map: [number, number][] | null) { customTorqueMap = map; }
+  function getCustomTorqueMap(): [number, number][] | null { return customTorqueMap ? customTorqueMap.map(([r, t]) => [r, t]) : null; }
+  return { update, setThrottle, startQuarterMile, launchCar, resetQuarterMile, isRunning: () => running, setEcuConfig, getEcuConfig, setAiCorrections, getAiCorrections, setCustomTorqueMap, getCustomTorqueMap };
 }
