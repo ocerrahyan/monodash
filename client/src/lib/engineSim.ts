@@ -1,3 +1,5 @@
+import { log } from '@shared/logger';
+
 export interface EcuConfig {
   redlineRpm: number;
   fuelCutRpm: number;
@@ -707,7 +709,7 @@ export function getDefaultEcuConfig(): EcuConfig {
     gearRevLimits: [8200, 8200, 8200, 8200, 8200],
 
     // 1999-2000 Civic Si (EM1) curb weight: 2489 lbs
-    vehicleMassLb: 2489,
+    vehicleMassLb: 2659,
     // 1999-2000 Civic Si: 195/55R15 tires on 15x6 alloy wheels
     // Stock wheel: ~13 lbs, Stock tire (195/55R15): ~17 lbs = ~30 lbs per corner
     tireDiameterIn: (195 * 0.55 * 2 / 25.4) + 15,  // 23.44 inches
@@ -1708,8 +1710,8 @@ function getContactPatchArea(widthMm: number, aspectRatio: number, loadN: number
 const B16A2_TORQUE_MAP: [number, number][] = [
   [750, 40], [1000, 50], [1500, 58], [2000, 67], [2500, 75],
   [3000, 82], [3500, 88], [4000, 93], [4500, 96], [5000, 99],
-  [5500, 103], [6000, 107], [6500, 109], [7000, 111], [7500, 109],
-  [7600, 108], [8000, 100], [8200, 95],
+  [5500, 103], [6000, 107], [6500, 109], [7000, 111], [7500, 111],
+  [7600, 110.5], [8000, 100], [8200, 95],
 ];
 
 // Stock B16A2 compression ratio for baseline
@@ -1938,6 +1940,7 @@ function computeDerived(config: EcuConfig): DerivedConstants {
 export function createEngineSimulation(ecuConfig?: EcuConfig) {
   let config: EcuConfig = ecuConfig ? { ...ecuConfig } : getDefaultEcuConfig();
   let derived = computeDerived(config);
+  log.info('engineSim', 'Simulation created', { redline: config.redlineRpm, mass: config.vehicleMassLb, drive: config.drivetrainType });
   let aiCorrections = { gripMultiplier: 1.0, weightTransferMultiplier: 1.0, slipMultiplier: 1.0, dragMultiplier: 1.0, tractionMultiplier: 1.0 };
 
   let crankAngle = 0;
@@ -1988,6 +1991,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
   }
 
   function startQuarterMile() {
+    log.info('engineSim', 'Quarter mile started — staging');
     speedMps = 0;
     distanceFt = 0;
     qmElapsedTime = 0;
@@ -2020,6 +2024,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     if (qmActive && !qmLaunched) {
       qmLaunched = true;
       clutchIn = false;  // Release clutch pedal - engage transmission
+      log.info('engineSim', 'Launch! Clutch dumped', { rpm: currentRpm, gear: currentGear + 1 });
     }
   }
 
@@ -2148,10 +2153,12 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     if (vtecActive) {
       if (currentRpm < config.vtecDisengageRpm) {
         vtecActive = false;
+        log.debug('engineSim', 'VTEC disengaged', { rpm: Math.round(currentRpm) });
       }
     } else {
       if (currentRpm >= config.vtecEngageRpm) {
         vtecActive = true;
+        log.debug('engineSim', 'VTEC engaged!', { rpm: Math.round(currentRpm) });
       }
     }
 
@@ -2326,9 +2333,9 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
           
           // At very low speed during clutch engagement
           if (speedMps < 3 && vehicleDrivenRpm < idleRpm * 1.5) {
-            // Engine lugs slightly but doesn't stall
+            // Clutch dump transfers power rapidly — fast coupling with slight lugging
             const targetRpm = Math.max(idleRpm * 0.9, vehicleDrivenRpm);
-            currentRpm = clamp(lerp(currentRpm, targetRpm, dt * 3), idleRpm * 0.7, fuelCutRpm);
+            currentRpm = clamp(lerp(currentRpm, targetRpm, dt * 15), idleRpm * 0.7, fuelCutRpm);
             clutchStatus = "ENGAGING";
           } else {
             currentRpm = clamp(Math.max(vehicleDrivenRpm, idleRpm), idleRpm, fuelCutRpm);
@@ -2344,6 +2351,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
         if (currentRpm >= gearRedline && currentGear < config.gearRatios.length - 1) {
           currentGear++;
           shiftTimer = derived.shiftTimeS;
+          log.debug('engineSim', `Shift to gear ${currentGear + 1}`, { rpm: Math.round(currentRpm), speed: Math.round(speedMps * 2.237) });
         }
 
         if (shiftTimer <= 0) {
@@ -2412,8 +2420,8 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
             // Efficiency loss from wheelspin (only at low speed)
             const efficiencyFactor = 1 / (1 + Math.log(excessRatio) * 0.5 * tractionLimitFactor);
             
-            // Blend between raw force and traction-limited force based on speed
-            const limitedForce = tractionForce * Math.min(1.2, efficiencyFactor + 0.2);
+            // Limited force never exceeds traction capacity
+            const limitedForce = tractionForce * Math.min(1.0, efficiencyFactor);
             wheelForceN = limitedForce + (rawWheelForceN - limitedForce) * (1 - tractionLimitFactor);
             
             // Slip ratio - only significant at low speed
@@ -2581,6 +2589,13 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
         qmET = qmElapsedTime - overshootTime;
         trapSpeed = currentSpeedMph;
         distanceFt = QUARTER_MILE_FT;
+        log.info('engineSim', 'Quarter mile FINISHED', {
+          et: qmET?.toFixed(3),
+          trapMph: trapSpeed?.toFixed(1),
+          peakHp: peakWheelHp.toFixed(1),
+          peakRpm: Math.round(peakRpm),
+          sixtyFt: sixtyFootTime?.toFixed(3),
+        });
       }
     } else if (!qmActive) {
       const rpmAccelRate = throttle > (currentRpm - idleRpm) / (redline - idleRpm) ? 4000 : 5000;

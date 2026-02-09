@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { validatePhysics } from "./aiPhysics";
 import fs from "fs";
 import path from "path";
+import { log } from "../shared/logger";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -19,7 +20,7 @@ export async function registerRoutes(
       const activeCount = await storage.getActiveCount();
       res.json({ activeCount });
     } catch (err) {
-      console.error("Heartbeat error:", err);
+      log.error('routes', 'Heartbeat error', err);
       res.status(500).json({ error: "Internal error" });
     }
   });
@@ -29,7 +30,7 @@ export async function registerRoutes(
       const activeCount = await storage.getActiveCount();
       res.json({ activeCount });
     } catch (err) {
-      console.error("Active count error:", err);
+      log.error('routes', 'Active count error', err);
       res.status(500).json({ error: "Internal error" });
     }
   });
@@ -63,7 +64,7 @@ export async function registerRoutes(
 
       res.json(result);
     } catch (err) {
-      console.error("AI physics validation error:", err);
+      log.error('routes', 'AI physics validation error', err);
       res.json(defaultCorrections);
     }
   });
@@ -77,7 +78,7 @@ export async function registerRoutes(
       const content = await fs.promises.readFile(exportPath, "utf-8");
       res.json({ content });
     } catch (err) {
-      console.error("Export error:", err);
+      log.error('routes', 'Export error', err);
       res.status(500).json({ error: "Failed to read export" });
     }
   });
@@ -93,7 +94,7 @@ export async function registerRoutes(
       const stream = fs.createReadStream(exportPath);
       stream.pipe(res);
     } catch (err) {
-      console.error("Export download error:", err);
+      log.error('routes', 'Export download error', err);
       res.status(500).send("Failed to download export");
     }
   });

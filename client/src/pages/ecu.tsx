@@ -4,6 +4,7 @@ import { type EcuConfig, getDefaultEcuConfig } from "@/lib/engineSim";
 import { sharedSim } from "@/lib/sharedSim";
 import { getAllPresets, savePreset, deletePreset, type Preset, configToShareUrl, exportConfigToFile, importConfigFromFile, pushUndo, undo, redo, canUndo, canRedo, configFromShareUrl } from "@/lib/presets";
 import { useAiMode } from "@/lib/aiMode";
+import { log } from '@shared/logger';
 
 type ConfigKey = keyof EcuConfig;
 

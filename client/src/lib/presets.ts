@@ -1,4 +1,5 @@
 import { type EcuConfig, getDefaultEcuConfig } from "./engineSim";
+import { log } from '@shared/logger';
 
 export interface Preset {
   name: string;
@@ -252,6 +253,7 @@ export function getSavedPresets(): Preset[] {
 }
 
 export function savePreset(name: string, config: EcuConfig): void {
+  log.info('presets', `Saving preset: ${name}`);
   const presets = getSavedPresets();
   const existing = presets.findIndex((p) => p.name === name);
   const preset: Preset = { name, config: { ...config }, builtIn: false };
@@ -264,6 +266,7 @@ export function savePreset(name: string, config: EcuConfig): void {
 }
 
 export function deletePreset(name: string): void {
+  log.info('presets', `Deleting preset: ${name}`);
   const presets = getSavedPresets().filter((p) => p.name !== name);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
 }
@@ -315,6 +318,7 @@ export function configFromShareUrl(): EcuConfig | null {
 // EXPORT / IMPORT (JSON file download/upload)
 // ═══════════════════════════════════════════════════════════════════════════
 export function exportConfigToFile(config: EcuConfig, name: string = 'ecu-config'): void {
+  log.info('presets', `Exporting config to file: ${name}`);
   const json = JSON.stringify(config, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);

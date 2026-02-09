@@ -2,10 +2,14 @@ import { createRoot } from "react-dom/client";
 import { Component, ErrorInfo, ReactNode } from "react";
 import App from "./App";
 import "./index.css";
+import { log, logError } from "@shared/logger";
+
+log.info('app', 'Mono5 Engine Simulator starting...');
+log.info('app', `Environment: ${import.meta.env.MODE}, URL: ${window.location.href}`);
 
 // Global error handler for uncaught errors
 window.onerror = (message, source, lineno, colno, error) => {
-  console.error("Global error:", { message, source, lineno, colno, error });
+  logError('global', error || message, `Uncaught error at ${source}:${lineno}`);
   const root = document.getElementById("root");
   if (root && !root.hasChildNodes()) {
     root.innerHTML = `
@@ -21,7 +25,7 @@ window.onerror = (message, source, lineno, colno, error) => {
 
 // Promise rejection handler
 window.onunhandledrejection = (event) => {
-  console.error("Unhandled promise rejection:", event.reason);
+  logError('global', event.reason, 'Unhandled promise rejection');
 };
 
 // Error boundary to prevent blank white screens

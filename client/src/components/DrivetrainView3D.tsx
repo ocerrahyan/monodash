@@ -1,7 +1,8 @@
 import React, { useRef, useMemo, useState, useCallback, Suspense, Component, ErrorInfo, ReactNode } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html } from "@react-three/drei";
 import * as THREE from "three";
+import { log } from '@shared/logger';
 
 // ── WebGL error boundary ─────────────────────────────────────────────
 // Catches WebGL context creation failures so rest of dashboard survives
@@ -9,7 +10,7 @@ class WebGLErrorBoundary extends Component<{ children: ReactNode; height: number
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) { return { error }; }
   componentDidCatch(err: Error, info: ErrorInfo) {
-    console.warn('[DrivetrainView3D] WebGL error caught:', err.message, info.componentStack);
+    log.error('DrivetrainView3D', 'WebGL error caught', { message: err.message, stack: info.componentStack });
   }
   render() {
     if (this.state.error) {
@@ -1047,6 +1048,39 @@ function TransmissionCase({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CAMERA CONTROLLER  (smooth preset transitions without remounting Canvas)
+// ═══════════════════════════════════════════════════════════════════════════
+function CameraController({ presetIndex }: { presetIndex: number }) {
+  const { camera } = useThree();
+  const controlsRef = useRef<any>(null);
+
+  React.useEffect(() => {
+    const preset = VIEW_PRESETS[presetIndex];
+    if (!preset) return;
+    camera.position.set(preset.position[0], preset.position[1], preset.position[2]);
+    camera.updateProjectionMatrix();
+    if (controlsRef.current) {
+      controlsRef.current.target.set(preset.target[0], preset.target[1], preset.target[2]);
+      controlsRef.current.update();
+    }
+  }, [presetIndex, camera]);
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      enablePan={true}
+      enableZoom={true}
+      enableRotate={true}
+      minDistance={2}
+      maxDistance={30}
+      enableDamping
+      dampingFactor={0.08}
+      rotateSpeed={0.6}
+    />
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 3D LABEL HELPER  (uses Html from drei — no font loading required)
 // ═══════════════════════════════════════════════════════════════════════════
 const labelStyle: React.CSSProperties = {
@@ -1948,9 +1982,9 @@ function EngineBlock({
         </group>
       ))}
 
-      {/* ── CRANKSHAFT + ROTATING ASSEMBLY (animated) ── */}
+      {/* ── CRANKSHAFT JOURNALS + ACCESSORIES (rotate with crank) ── */}
       <group ref={crankRef}>
-        {/* Main journals (5 journals for 4 cylinders) */}
+        {/* Main journals (5 journals for 4 cylinders) — cylindrical, rotation OK */}
         {Array.from({ length: 5 }, (_, i) => {
           const jx = -2 * BORE_SPACING + i * BORE_SPACING;
           return (
@@ -1958,20 +1992,6 @@ function EngineBlock({
               <cylinderGeometry args={[CRANK_MAIN_R, CRANK_MAIN_R, BORE_SPACING * 0.35, 16]} />
               <meshStandardMaterial color="#bbb" metalness={0.9} roughness={0.1} />
             </mesh>
-          );
-        })}
-
-        {/* Crank throws + pins + counterweights + connecting rods + pistons */}
-        {cylOffsets.map((cx, i) => {
-          const phaseAngle = CRANK_OFFSETS[i];
-          return (
-            <CrankThrowAssembly
-              key={`cta${i}`}
-              cylinderX={cx}
-              phaseAngle={phaseAngle}
-              rotationAngle={rotationAngle}
-              cylIndex={i}
-            />
           );
         })}
 
@@ -1986,6 +2006,23 @@ function EngineBlock({
           <meshStandardMaterial color="#555" metalness={0.7} roughness={0.3} />
         </mesh>
       </group>
+
+      {/* ── PISTON + CON ROD + CRANK THROW ASSEMBLIES ── */}
+      {/* NOT inside the rotating crankRef group — each CrankThrowAssembly */}
+      {/* computes its own slider-crank kinematics in world coordinates.   */}
+      {/* Pistons reciprocate up/down (Y), throws orbit in YZ plane.       */}
+      {cylOffsets.map((cx, i) => {
+        const phaseAngle = CRANK_OFFSETS[i];
+        return (
+          <CrankThrowAssembly
+            key={`cta${i}`}
+            cylinderX={cx}
+            phaseAngle={phaseAngle}
+            rotationAngle={rotationAngle}
+            cylIndex={i}
+          />
+        );
+      })}
 
       {/* ── OIL PAN (below block) ── */}
       <mesh position={[0, -BLOCK_SUMP_H - 0.25, 0]}>
@@ -2232,7 +2269,7 @@ function DrivetrainScene(props: DrivetrainView3DProps) {
   const hubX       = tireX - 1.2;
   const outerCvX   = hubX - 1.5;
   const innerCvX   = outerCvX - DRIVER_AXLE_LEN + CV_LEN;
-  const transX     = innerCvX - 2.5;
+  const transX     = innerCvX - 1.5;
   const clutchX    = transX - TRANS_D * 0.5 - CLUTCH_THICK - 0.1;
   const fwX        = clutchX - FW_THICK - 0.1;
 
@@ -2301,7 +2338,7 @@ function DrivetrainScene(props: DrivetrainView3DProps) {
 
       {/* ── B16A2 ENGINE BLOCK (translucent with rotating assembly) ── */}
       <EngineBlock
-        position={[fwX - FW_THICK / 2 - BLOCK_L / 2 - 0.15, 0, 0]}
+        position={[fwX - FW_THICK / 2 - BLOCK_L / 2 - 0.05, 0, 0]}
         rotationAngle={fwRotRef.current}
       />
 
@@ -2394,8 +2431,6 @@ export function DrivetrainView3D(props: DrivetrainView3DProps) {
     setActivePreset(idx);
   }, []);
 
-  const preset = VIEW_PRESETS[activePreset];
-
   return (
     <div
       style={{
@@ -2447,8 +2482,7 @@ export function DrivetrainView3D(props: DrivetrainView3DProps) {
       <WebGLErrorBoundary height={480}>
         {isWebGLAvailable() ? (
           <Canvas
-            key={activePreset}
-            camera={{ position: preset.position, fov: 42 }}
+            camera={{ position: VIEW_PRESETS[0].position, fov: 42 }}
             style={{ width: "100%", height: "100%" }}
             gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
             onCreated={({ gl }) => {
@@ -2458,17 +2492,7 @@ export function DrivetrainView3D(props: DrivetrainView3DProps) {
             }}
           >
             <Suspense fallback={null}>
-              <OrbitControls
-                enablePan={true}
-                enableZoom={true}
-                enableRotate={true}
-                minDistance={2}
-                maxDistance={30}
-                target={preset.target}
-                enableDamping
-                dampingFactor={0.08}
-                rotateSpeed={0.6}
-              />
+              <CameraController presetIndex={activePreset} />
               <DrivetrainScene {...props} />
             </Suspense>
           </Canvas>

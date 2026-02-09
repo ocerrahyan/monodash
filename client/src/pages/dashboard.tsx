@@ -8,6 +8,7 @@ import { FWDDrivetrainVisual } from "../components/FWDDrivetrainVisual";
 import { DrivetrainView3D } from "@/components/DrivetrainView3D";
 import { useAiMode } from "@/lib/aiMode";
 import { fetchAiCorrections, defaultCorrections, type AiCorrectionFactors } from "@/lib/aiPhysicsClient";
+import { log } from '@shared/logger';
 
 // Drag and Drop Context for gauges
 interface DragContextType {

@@ -3,6 +3,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { log as slog, logError } from "../shared/logger";
 
 const app = express();
 const httpServer = createServer(app);
@@ -68,6 +69,7 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     console.error("Internal Server Error:", err);
+    logError('server', err, 'Express error handler');
 
     if (res.headersSent) {
       return next(err);
