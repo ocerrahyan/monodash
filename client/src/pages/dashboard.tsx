@@ -4,6 +4,8 @@ import { type EngineState } from "@/lib/engineSim";
 import { sharedSim } from "@/lib/sharedSim";
 import { EngineSound } from "@/lib/engineSound";
 import { Button } from "@/components/ui/button";
+import { FWDDrivetrainVisual } from "../components/FWDDrivetrainVisual";
+import { DrivetrainView3D } from "@/components/DrivetrainView3D";
 import { useAiMode } from "@/lib/aiMode";
 import { fetchAiCorrections, defaultCorrections, type AiCorrectionFactors } from "@/lib/aiPhysicsClient";
 
@@ -285,6 +287,347 @@ function SectionHeader({ title }: { title: string }) {
   );
 }
 
+// Porsche-style Tachometer with smooth needle
+interface PorscheTachProps {
+  rpm: number;
+  redline?: number;
+  maxRpm?: number;
+}
+
+function PorscheTach({ rpm, redline = 8000, maxRpm = 9000 }: PorscheTachProps) {
+  const safeRpm = typeof rpm === 'number' && !isNaN(rpm) ? rpm : 0;
+  const [displayRpm, setDisplayRpm] = useState(safeRpm);
+  
+  // Smooth interpolation using useEffect
+  useEffect(() => {
+    let animationId: number;
+    const animate = () => {
+      setDisplayRpm(prev => {
+        const diff = safeRpm - prev;
+        if (Math.abs(diff) < 5) return safeRpm;
+        return prev + diff * 0.2;
+      });
+      animationId = requestAnimationFrame(animate);
+    };
+    animationId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationId);
+  }, [safeRpm]);
+  
+  // Gauge sweep: starts at bottom-left (-225°), ends at bottom-right (45°) = 270° sweep
+  // 0 RPM = -225° (7 o'clock), max RPM = 45° (5 o'clock)
+  const minAngle = -225;
+  const maxAngle = 45;
+  const rpmNormalized = Math.min(Math.max(displayRpm / maxRpm, 0), 1);
+  const needleAngle = minAngle + rpmNormalized * (maxAngle - minAngle);
+  
+  const redlineNormalized = redline / maxRpm;
+  const redlineStartAngle = minAngle + redlineNormalized * (maxAngle - minAngle);
+  
+  // Generate tick marks
+  const ticks = [];
+  for (let i = 0; i <= maxRpm; i += 1000) {
+    const tickNorm = i / maxRpm;
+    // Offset by -90° because SVG rotation 0° is at 3 o'clock, we want it relative to 12 o'clock
+    const tickAngle = ((minAngle + tickNorm * (maxAngle - minAngle)) - 90) * Math.PI / 180;
+    const isRedzone = i >= redline;
+    const isMajor = i % 2000 === 0;
+    
+    const innerR = isMajor ? 70 : 74;
+    const outerR = 82;
+    const x1 = 100 + Math.cos(tickAngle) * innerR;
+    const y1 = 100 + Math.sin(tickAngle) * innerR;
+    const x2 = 100 + Math.cos(tickAngle) * outerR;
+    const y2 = 100 + Math.sin(tickAngle) * outerR;
+    
+    ticks.push(
+      <line key={`tick-${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={isRedzone ? '#dc2626' : '#e5e5e5'} strokeWidth={isMajor ? 3 : 1.5} />
+    );
+    
+    if (isMajor) {
+      const labelR = 58;
+      const lx = 100 + Math.cos(tickAngle) * labelR;
+      const ly = 100 + Math.sin(tickAngle) * labelR;
+      ticks.push(
+        <text key={`label-${i}`} x={lx} y={ly} fill={isRedzone ? '#dc2626' : '#e5e5e5'} fontSize="13" fontWeight="bold" fontFamily="Arial, sans-serif" textAnchor="middle" dominantBaseline="middle">
+          {i / 1000}
+        </text>
+      );
+    }
+  }
+  
+  // Redline arc
+  const redlineArcStartAngle = (redlineStartAngle - 90) * Math.PI / 180;
+  const redlineArcEndAngle = (maxAngle - 90) * Math.PI / 180;
+  
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative w-44 h-44">
+        <svg viewBox="0 0 200 200" className="w-full h-full">
+          {/* Outer bezel */}
+          <circle cx="100" cy="100" r="96" fill="none" stroke="#505050" strokeWidth="4" />
+          <circle cx="100" cy="100" r="92" fill="#0a0a0a" />
+          <circle cx="100" cy="100" r="88" fill="none" stroke="#222" strokeWidth="2" />
+          
+          {/* Redline zone arc */}
+          <path
+            d={`M ${100 + Math.cos(redlineArcStartAngle) * 85} ${100 + Math.sin(redlineArcStartAngle) * 85} A 85 85 0 0 1 ${100 + Math.cos(redlineArcEndAngle) * 85} ${100 + Math.sin(redlineArcEndAngle) * 85}`}
+            fill="none" stroke="rgba(220, 38, 38, 0.4)" strokeWidth="10" strokeLinecap="butt"
+          />
+          
+          {/* Tick marks and labels */}
+          {ticks}
+          
+          {/* Center label */}
+          <text x="100" y="145" fill="#666" fontSize="9" fontFamily="Arial, sans-serif" textAnchor="middle">RPM x1000</text>
+          
+          {/* Needle - rotates around center, pointing UP at 0° */}
+          <g transform={`rotate(${needleAngle}, 100, 100)`}>
+            {/* Needle shadow */}
+            <polygon points="100,18 94,105 100,112 106,105" fill="rgba(0,0,0,0.4)" />
+            {/* Main needle body */}
+            <polygon points="100,20 95,100 100,110 105,100" fill="#dc2626" />
+            {/* Needle highlight */}
+            <polygon points="100,22 98,85 100,90 102,85" fill="#ff6666" />
+          </g>
+          
+          {/* Center cap */}
+          <circle cx="100" cy="100" r="14" fill="#333" />
+          <circle cx="100" cy="100" r="10" fill="#1a1a1a" stroke="#555" strokeWidth="1" />
+          <circle cx="100" cy="100" r="4" fill="#dc2626" />
+        </svg>
+        
+        {/* Digital RPM readout */}
+        <div className="absolute inset-x-0 bottom-6 text-center">
+          <span className="text-xl font-mono font-bold tabular-nums text-white">{Math.round(displayRpm)}</span>
+        </div>
+      </div>
+      <span className="text-[10px] tracking-widest uppercase text-white/60 font-mono mt-1">TACHOMETER</span>
+    </div>
+  );
+}
+
+// Porsche-style Wheel Speed gauge (cyan needle — shows tire surface speed including slip)
+interface PorscheWheelSpeedoProps {
+  wheelSpeedMph: number;
+  maxSpeed?: number;
+}
+
+function PorscheWheelSpeedo({ wheelSpeedMph, maxSpeed = 160 }: PorscheWheelSpeedoProps) {
+  const safeSpeed = typeof wheelSpeedMph === 'number' && !isNaN(wheelSpeedMph) ? wheelSpeedMph : 0;
+  const [displaySpeed, setDisplaySpeed] = useState(safeSpeed);
+
+  // Smooth interpolation
+  useEffect(() => {
+    let animationId: number;
+    const animate = () => {
+      setDisplaySpeed(prev => {
+        const diff = safeSpeed - prev;
+        if (Math.abs(diff) < 0.3) return safeSpeed;
+        return prev + diff * 0.15;
+      });
+      animationId = requestAnimationFrame(animate);
+    };
+    animationId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationId);
+  }, [safeSpeed]);
+
+  // Same sweep as tach: -225° to 45°
+  const minAngle = -225;
+  const maxAngle = 45;
+  const speedNormalized = Math.min(Math.max(displaySpeed / maxSpeed, 0), 1);
+  const needleAngle = minAngle + speedNormalized * (maxAngle - minAngle);
+
+  // Generate tick marks (every 10 MPH, major every 20)
+  const ticks = [];
+  for (let i = 0; i <= maxSpeed; i += 10) {
+    const tickNorm = i / maxSpeed;
+    const tickAngle = ((minAngle + tickNorm * (maxAngle - minAngle)) - 90) * Math.PI / 180;
+    const isMajor = i % 20 === 0;
+
+    const innerR = isMajor ? 70 : 74;
+    const outerR = 82;
+    const x1 = 100 + Math.cos(tickAngle) * innerR;
+    const y1 = 100 + Math.sin(tickAngle) * innerR;
+    const x2 = 100 + Math.cos(tickAngle) * outerR;
+    const y2 = 100 + Math.sin(tickAngle) * outerR;
+
+    ticks.push(
+      <line key={`tick-${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#e5e5e5" strokeWidth={isMajor ? 3 : 1.5} />
+    );
+
+    if (isMajor) {
+      const labelR = 58;
+      const lx = 100 + Math.cos(tickAngle) * labelR;
+      const ly = 100 + Math.sin(tickAngle) * labelR;
+      ticks.push(
+        <text key={`label-${i}`} x={lx} y={ly} fill="#e5e5e5" fontSize="12" fontWeight="bold" fontFamily="Arial, sans-serif" textAnchor="middle" dominantBaseline="middle">
+          {i}
+        </text>
+      );
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative w-44 h-44">
+        <svg viewBox="0 0 200 200" className="w-full h-full">
+          {/* Outer bezel */}
+          <circle cx="100" cy="100" r="96" fill="none" stroke="#505050" strokeWidth="4" />
+          <circle cx="100" cy="100" r="92" fill="#0a0a0a" />
+          <circle cx="100" cy="100" r="88" fill="none" stroke="#222" strokeWidth="2" />
+
+          {/* Tick marks and labels */}
+          {ticks}
+
+          {/* Center label */}
+          <text x="100" y="145" fill="#0e7490" fontSize="9" fontFamily="Arial, sans-serif" textAnchor="middle">WHEEL MPH</text>
+
+          {/* Needle */}
+          <g transform={`rotate(${needleAngle}, 100, 100)`}>
+            {/* Needle shadow */}
+            <polygon points="100,18 94,105 100,112 106,105" fill="rgba(0,0,0,0.4)" />
+            {/* Main needle body — cyan */}
+            <polygon points="100,20 95,100 100,110 105,100" fill="#06b6d4" />
+            {/* Needle highlight */}
+            <polygon points="100,22 98,85 100,90 102,85" fill="#67e8f9" />
+          </g>
+
+          {/* Center cap */}
+          <circle cx="100" cy="100" r="14" fill="#333" />
+          <circle cx="100" cy="100" r="10" fill="#1a1a1a" stroke="#555" strokeWidth="1" />
+          <circle cx="100" cy="100" r="4" fill="#06b6d4" />
+        </svg>
+
+        {/* Digital speed readout */}
+        <div className="absolute inset-x-0 bottom-6 text-center">
+          <span className="text-xl font-mono font-bold tabular-nums text-cyan-400">{Math.round(displaySpeed)}</span>
+        </div>
+      </div>
+      <span className="text-[10px] tracking-widest uppercase text-cyan-400/60 font-mono mt-1">WHEEL SPEED</span>
+    </div>
+  );
+}
+
+// Porsche-style Speedometer with smooth needle
+interface PorscheSpeedoProps {
+  speedMph: number;
+  maxSpeed?: number;
+}
+
+function PorscheSpeedo({ speedMph, maxSpeed = 160 }: PorscheSpeedoProps) {
+  const safeSpeed = typeof speedMph === 'number' && !isNaN(speedMph) ? speedMph : 0;
+  const [displaySpeed, setDisplaySpeed] = useState(safeSpeed);
+  
+  // Smooth interpolation
+  useEffect(() => {
+    let animationId: number;
+    const animate = () => {
+      setDisplaySpeed(prev => {
+        const diff = safeSpeed - prev;
+        if (Math.abs(diff) < 0.3) return safeSpeed;
+        return prev + diff * 0.15;
+      });
+      animationId = requestAnimationFrame(animate);
+    };
+    animationId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationId);
+  }, [safeSpeed]);
+  
+  // Same sweep as tach: -225° to 45°
+  const minAngle = -225;
+  const maxAngle = 45;
+  const speedNormalized = Math.min(Math.max(displaySpeed / maxSpeed, 0), 1);
+  const needleAngle = minAngle + speedNormalized * (maxAngle - minAngle);
+  
+  // Generate tick marks (every 10 MPH, major every 20)
+  const ticks = [];
+  for (let i = 0; i <= maxSpeed; i += 10) {
+    const tickNorm = i / maxSpeed;
+    const tickAngle = ((minAngle + tickNorm * (maxAngle - minAngle)) - 90) * Math.PI / 180;
+    const isMajor = i % 20 === 0;
+    
+    const innerR = isMajor ? 70 : 74;
+    const outerR = 82;
+    const x1 = 100 + Math.cos(tickAngle) * innerR;
+    const y1 = 100 + Math.sin(tickAngle) * innerR;
+    const x2 = 100 + Math.cos(tickAngle) * outerR;
+    const y2 = 100 + Math.sin(tickAngle) * outerR;
+    
+    ticks.push(
+      <line key={`tick-${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#e5e5e5" strokeWidth={isMajor ? 3 : 1.5} />
+    );
+    
+    if (isMajor) {
+      const labelR = 58;
+      const lx = 100 + Math.cos(tickAngle) * labelR;
+      const ly = 100 + Math.sin(tickAngle) * labelR;
+      ticks.push(
+        <text key={`label-${i}`} x={lx} y={ly} fill="#e5e5e5" fontSize="12" fontWeight="bold" fontFamily="Arial, sans-serif" textAnchor="middle" dominantBaseline="middle">
+          {i}
+        </text>
+      );
+    }
+  }
+  
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative w-44 h-44">
+        <svg viewBox="0 0 200 200" className="w-full h-full">
+          {/* Outer bezel */}
+          <circle cx="100" cy="100" r="96" fill="none" stroke="#505050" strokeWidth="4" />
+          <circle cx="100" cy="100" r="92" fill="#0a0a0a" />
+          <circle cx="100" cy="100" r="88" fill="none" stroke="#222" strokeWidth="2" />
+          
+          {/* Tick marks and labels */}
+          {ticks}
+          
+          {/* Center label */}
+          <text x="100" y="145" fill="#666" fontSize="10" fontFamily="Arial, sans-serif" textAnchor="middle">MPH</text>
+          
+          {/* Needle */}
+          <g transform={`rotate(${needleAngle}, 100, 100)`}>
+            {/* Needle shadow */}
+            <polygon points="100,18 94,105 100,112 106,105" fill="rgba(0,0,0,0.4)" />
+            {/* Main needle body */}
+            <polygon points="100,20 95,100 100,110 105,100" fill="#f97316" />
+            {/* Needle highlight */}
+            <polygon points="100,22 98,85 100,90 102,85" fill="#fdba74" />
+          </g>
+          
+          {/* Center cap */}
+          <circle cx="100" cy="100" r="14" fill="#333" />
+          <circle cx="100" cy="100" r="10" fill="#1a1a1a" stroke="#555" strokeWidth="1" />
+          <circle cx="100" cy="100" r="4" fill="#f97316" />
+        </svg>
+        
+        {/* Digital speed readout */}
+        <div className="absolute inset-x-0 bottom-6 text-center">
+          <span className="text-xl font-mono font-bold tabular-nums text-white">{Math.round(displaySpeed)}</span>
+        </div>
+      </div>
+      <span className="text-[10px] tracking-widest uppercase text-white/60 font-mono mt-1">SPEEDOMETER</span>
+    </div>
+  );
+}
+
+// Combined Porsche Gauge Cluster
+interface PorscheGaugeClusterProps {
+  rpm: number;
+  speedMph: number;
+  wheelSpeedMph: number;
+  redline?: number;
+}
+
+function PorscheGaugeCluster({ rpm, speedMph, wheelSpeedMph, redline = 8000 }: PorscheGaugeClusterProps) {
+  return (
+    <div className="col-span-4 flex justify-center items-center gap-4 py-4 px-2">
+      <PorscheWheelSpeedo wheelSpeedMph={wheelSpeedMph} />
+      <PorscheTach rpm={rpm} redline={redline} />
+      <PorscheSpeedo speedMph={speedMph} />
+    </div>
+  );
+}
+
 interface WheelVisualProps {
   tireRpm: number;
   slipPct: number;
@@ -326,10 +669,10 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
   const sidewallRatio = (sidewallMm * 2) / totalDiameterMm;  // 0.36
   
   // Visual sizes - scaled to fit in container
-  // Keep proportions accurate: if total is 140px, rim should be 64% of that
-  const outerSize = 140;  // Total tire diameter in pixels
-  const rimSize = Math.round(outerSize * rimRatio);  // ~90px for 15" rim in 23.44" tire
-  const tireThickness = (outerSize - rimSize) / 2;  // ~25px sidewall thickness
+  // Keep proportions accurate: if total is 155px, rim should be rimRatio of that
+  const outerSize = 155;  // Total tire diameter in pixels — slightly larger for SVG detail
+  const rimSize = Math.round(outerSize * rimRatio);  // ~99px for 15" rim in 23.44" tire
+  const tireThickness = (outerSize - rimSize) / 2;  // ~28px sidewall thickness
   
   // Calculate tire circumference for accurate speed-to-RPM conversion
   const tireCircumferenceFt = (totalDiameterIn * Math.PI) / 12;
@@ -491,7 +834,7 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
           <span className="text-[8px] tracking-wide uppercase opacity-50 font-mono">FT</span>
         </div>
       </div>
-      <div className="relative" style={{ width: 200, height: 180 }}>
+      <div className="relative" style={{ width: 210, height: 195 }}>
         {/* Smoke effects - show when slipping during launch */}
         {isSlipping && (
           <>
@@ -529,59 +872,210 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
           </>
         )}
         
-        {/* Wheel assembly */}
+        {/* Wheel assembly — SVG side-profile */}
         <div 
           className="absolute"
           style={{ width: outerSize, height: outerSize, left: (200 - outerSize) / 2, top: 5 }}
         >
-          {/* Tire */}
-          <div 
-            className="absolute inset-0 rounded-full"
-            style={{
-              border: `${tireThickness}px solid ${isSlipping ? (heavySlip ? '#4a4a4a' : '#3a3a3a') : '#2a2a2a'}`,
-              boxShadow: isSlipping ? '0 0 15px rgba(255,100,50,0.3)' : 'none',
-              transition: 'border-color 0.2s, box-shadow 0.3s',
-            }}
-          />
-          
-          {/* Rim */}
-          <div 
-            className="absolute rounded-full bg-gradient-to-br from-zinc-600 to-zinc-800"
-            style={{ width: rimSize, height: rimSize, left: tireThickness, top: tireThickness, transform: `rotate(${rotation}deg)` }}
-          >
-            {/* Center hub */}
-            <div 
-              className="absolute rounded-full bg-zinc-900 border-2 border-zinc-600 z-10"
-              style={{ width: rimSize * 0.28, height: rimSize * 0.28, left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
-            />
-            {/* Spokes - extend from center to rim edge */}
-            {[0, 72, 144, 216, 288].map((angle) => {
-              const spokeLength = rimSize * 0.46;  // spoke extends ~92% of radius (leaving small gap at edge)
-              return (
-                <div
-                  key={angle}
-                  className="absolute bg-zinc-400"
-                  style={{
-                    width: 4, 
-                    height: spokeLength,
-                    left: '50%', 
-                    top: '50%',
-                    transformOrigin: 'center top',  // pivot at center
-                    transform: `translateX(-50%) rotate(${angle}deg)`,
-                    borderRadius: 2,
-                    opacity: spokeOpacity, 
-                    transition: 'opacity 0.3s',
-                  }}
-                />
-              );
+          <svg viewBox="0 0 200 200" className="w-full h-full" style={{ overflow: 'visible' }}>
+            <defs>
+              {/* Tire rubber gradient — slight sheen on top */}
+              <radialGradient id="tireRubber" cx="40%" cy="35%" r="60%">
+                <stop offset="0%" stopColor="#3a3a3a" />
+                <stop offset="40%" stopColor="#222" />
+                <stop offset="100%" stopColor="#181818" />
+              </radialGradient>
+              {/* Wheel face gradient — brushed alloy look */}
+              <radialGradient id="wheelFace" cx="45%" cy="40%" r="55%">
+                <stop offset="0%" stopColor="#c0c0c0" />
+                <stop offset="30%" stopColor="#a0a0a0" />
+                <stop offset="70%" stopColor="#888" />
+                <stop offset="100%" stopColor="#666" />
+              </radialGradient>
+              {/* Barrel/dish shadow */}
+              <radialGradient id="barrelShadow" cx="50%" cy="50%" r="50%">
+                <stop offset="60%" stopColor="#555" />
+                <stop offset="100%" stopColor="#333" />
+              </radialGradient>
+              {/* Center cap gradient */}
+              <radialGradient id="hubCap" cx="40%" cy="35%" r="55%">
+                <stop offset="0%" stopColor="#bbb" />
+                <stop offset="50%" stopColor="#888" />
+                <stop offset="100%" stopColor="#555" />
+              </radialGradient>
+              {/* Lip highlight */}
+              <linearGradient id="rimLip" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#d0d0d0" />
+                <stop offset="50%" stopColor="#999" />
+                <stop offset="100%" stopColor="#777" />
+              </linearGradient>
+            </defs>
+
+            {/* === TIRE === */}
+            {/* Outer tread surface */}
+            <circle cx="100" cy="100" r="96" fill="url(#tireRubber)" stroke="#111" strokeWidth="1.5" />
+            
+            {/* Tread grooves — circumferential lines */}
+            {[88, 91, 94].map((r) => (
+              <circle key={`tread-${r}`} cx="100" cy="100" r={r} fill="none" stroke="#1a1a1a" strokeWidth="0.8" strokeDasharray="6 3" />
+            ))}
+            
+            {/* Lateral tread sipes (cross-grooves around the circumference) */}
+            {Array.from({ length: 36 }).map((_, i) => {
+              const angle = (i * 10) * Math.PI / 180;
+              const x1 = 100 + Math.cos(angle) * 86;
+              const y1 = 100 + Math.sin(angle) * 86;
+              const x2 = 100 + Math.cos(angle) * 96;
+              const y2 = 100 + Math.sin(angle) * 96;
+              return <line key={`sipe-${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#1a1a1a" strokeWidth="0.5" opacity="0.5" />;
             })}
-          </div>
+
+            {/* Inner sidewall circle — defines the boundary between tire and wheel opening */}
+            {/* rimRadius is proportional: for 195/55R15, rim is 64% of total diameter */}
+            {(() => {
+              // Proportional rim radius within our 96px outer radius
+              const rimOuterR = 96 * rimRatio;  // ~61.5 for 195/55R15
+              const sidewallWidth = 96 - rimOuterR; // ~34.5px — the visible tire sidewall
+              
+              return (
+                <>
+                  {/* Sidewall surface — the ring between tread and rim edge */}
+                  {/* Sidewall is slightly darker than tread with subtle text area */}
+                  <circle cx="100" cy="100" r={rimOuterR + 2} fill="none" stroke="#1f1f1f" strokeWidth={sidewallWidth * 2 - 4} opacity="0.3" />
+                  
+                  {/* Sidewall profile line — subtle raised ridge where sidewall meets tread */}
+                  <circle cx="100" cy="100" r={96 - sidewallWidth * 0.15} fill="none" stroke="#333" strokeWidth="1" opacity="0.5" />
+                  
+                  {/* Sidewall profile line — bead area near rim */}
+                  <circle cx="100" cy="100" r={rimOuterR + sidewallWidth * 0.15} fill="none" stroke="#333" strokeWidth="0.8" opacity="0.4" />
+                  
+                  {/* Sidewall brand text simulation — raised lettering effect */}
+                  <text
+                    x="100" y={100 - rimOuterR - sidewallWidth * 0.55}
+                    fill="#333" fontSize="5.5" fontFamily="Arial, sans-serif" fontWeight="bold"
+                    textAnchor="middle" dominantBaseline="middle"
+                    style={{ letterSpacing: '1px' }}
+                  >
+                    {tireWidthMm}/{tireAspectRatio}R{rimDiameterIn}
+                  </text>
+                </>
+              );
+            })()}
+
+            {/* === WHEEL (rotating group) === */}
+            <g transform={`rotate(${rotation}, 100, 100)`}>
+              {(() => {
+                const rimR = 96 * rimRatio;       // outer edge of rim (~61.5)
+                const lipWidth = rimR * 0.05;      // rim lip thickness
+                const innerRimR = rimR - lipWidth; // inside the lip
+                const hubR = rimR * 0.22;          // center hub
+                const boltR = rimR * 0.16;         // lug nut circle
+                const spokeW = rimR * 0.13;        // spoke width at hub
+                const numSpokes = 5;
+
+                return (
+                  <>
+                    {/* Barrel/dish — dark recessed area behind spokes */}
+                    <circle cx="100" cy="100" r={innerRimR} fill="url(#barrelShadow)" />
+                    
+                    {/* Ventilation holes between spokes — dark openings showing brake disc */}
+                    {Array.from({ length: numSpokes }).map((_, i) => {
+                      const midAngle = ((i * 360 / numSpokes) + (360 / numSpokes / 2)) * Math.PI / 180;
+                      const holeR = innerRimR * 0.32;
+                      const holeDist = innerRimR * 0.58;
+                      const hx = 100 + Math.cos(midAngle) * holeDist;
+                      const hy = 100 + Math.sin(midAngle) * holeDist;
+                      return (
+                        <ellipse
+                          key={`hole-${i}`}
+                          cx={hx} cy={hy}
+                          rx={holeR} ry={holeR * 0.65}
+                          transform={`rotate(${i * 360 / numSpokes + 360 / numSpokes / 2}, ${hx}, ${hy})`}
+                          fill="#222" stroke="#444" strokeWidth="0.5"
+                          opacity={spokeOpacity}
+                        />
+                      );
+                    })}
+
+                    {/* Spokes — tapered from hub to rim lip */}
+                    {Array.from({ length: numSpokes }).map((_, i) => {
+                      const angle = (i * 360 / numSpokes) * Math.PI / 180;
+                      // Hub attachment points
+                      const hubOffsetAngle = Math.atan2(spokeW * 0.5, hubR + 2);
+                      const h1x = 100 + Math.cos(angle - hubOffsetAngle) * (hubR + 2);
+                      const h1y = 100 + Math.sin(angle - hubOffsetAngle) * (hubR + 2);
+                      const h2x = 100 + Math.cos(angle + hubOffsetAngle) * (hubR + 2);
+                      const h2y = 100 + Math.sin(angle + hubOffsetAngle) * (hubR + 2);
+                      // Rim edge points — wider at the rim
+                      const rimOffsetAngle = Math.atan2(spokeW * 0.7, innerRimR - 1);
+                      const r1x = 100 + Math.cos(angle - rimOffsetAngle) * (innerRimR - 1);
+                      const r1y = 100 + Math.sin(angle - rimOffsetAngle) * (innerRimR - 1);
+                      const r2x = 100 + Math.cos(angle + rimOffsetAngle) * (innerRimR - 1);
+                      const r2y = 100 + Math.sin(angle + rimOffsetAngle) * (innerRimR - 1);
+                      
+                      return (
+                        <g key={`spoke-${i}`} opacity={spokeOpacity}>
+                          {/* Spoke body */}
+                          <polygon
+                            points={`${h1x},${h1y} ${r1x},${r1y} ${r2x},${r2y} ${h2x},${h2y}`}
+                            fill="url(#wheelFace)" stroke="#777" strokeWidth="0.5"
+                          />
+                          {/* Spoke center highlight line */}
+                          <line
+                            x1={100 + Math.cos(angle) * (hubR + 4)}
+                            y1={100 + Math.sin(angle) * (hubR + 4)}
+                            x2={100 + Math.cos(angle) * (innerRimR - 3)}
+                            y2={100 + Math.sin(angle) * (innerRimR - 3)}
+                            stroke="#ccc" strokeWidth="0.8" opacity="0.4"
+                          />
+                        </g>
+                      );
+                    })}
+
+                    {/* Rim lip — polished outer ring */}
+                    <circle cx="100" cy="100" r={rimR} fill="none" stroke="url(#rimLip)" strokeWidth={lipWidth * 2} />
+                    <circle cx="100" cy="100" r={rimR + lipWidth * 0.5} fill="none" stroke="#aaa" strokeWidth="0.5" opacity="0.6" />
+                    <circle cx="100" cy="100" r={rimR - lipWidth * 0.5} fill="none" stroke="#999" strokeWidth="0.5" opacity="0.4" />
+
+                    {/* Center hub */}
+                    <circle cx="100" cy="100" r={hubR} fill="url(#hubCap)" stroke="#777" strokeWidth="0.8" />
+                    
+                    {/* Hub cap detail — raised center with H logo area */}
+                    <circle cx="100" cy="100" r={hubR * 0.65} fill="#888" stroke="#999" strokeWidth="0.5" />
+                    <circle cx="100" cy="100" r={hubR * 0.45} fill="#777" stroke="#aaa" strokeWidth="0.3" />
+                    {/* "H" emblem hint */}
+                    <text x="100" y="100.5" fill="#bbb" fontSize={hubR * 0.5} fontWeight="bold" fontFamily="Arial" textAnchor="middle" dominantBaseline="middle">H</text>
+
+                    {/* Lug nuts */}
+                    {Array.from({ length: 4 }).map((_, i) => {
+                      const nutAngle = ((i * 90) + 45) * Math.PI / 180;
+                      const nx = 100 + Math.cos(nutAngle) * boltR;
+                      const ny = 100 + Math.sin(nutAngle) * boltR;
+                      return (
+                        <circle key={`lug-${i}`} cx={nx} cy={ny} r={1.8} fill="#999" stroke="#666" strokeWidth="0.5" />
+                      );
+                    })}
+                  </>
+                );
+              })()}
+            </g>
+
+            {/* Slip glow overlay on tire */}
+            {isSlipping && (
+              <circle
+                cx="100" cy="100" r="96"
+                fill="none"
+                stroke={heavySlip ? 'rgba(255,80,30,0.25)' : 'rgba(255,150,50,0.15)'}
+                strokeWidth="6"
+              />
+            )}
+          </svg>
         </div>
         
         {/* Road with moving stripes */}
         <div 
           className="absolute overflow-hidden"
-          style={{ height: 12, width: 180, left: 10, bottom: 28, background: '#1a1a1a', borderRadius: 2 }}
+          style={{ height: 12, width: 190, left: 10, bottom: 32, background: '#1a1a1a', borderRadius: 2 }}
         >
           {/* Moving lane markings - shows actual ground speed */}
           <div 
@@ -601,14 +1095,14 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
         {/* Tire contact shadow */}
         <div 
           className="absolute bg-black/40 rounded-full blur-sm"
-          style={{ width: 40, height: 8, left: 80, bottom: 26 }}
+          style={{ width: 45, height: 8, left: 82, bottom: 30 }}
         />
         
         {/* Tire marks when slipping */}
         {isSlipping && isLaunching && (
           <div 
             className="absolute bg-zinc-700/60"
-            style={{ height: 6, width: Math.min(80, safeSlipPct * 1.5), left: 100 - Math.min(40, safeSlipPct * 0.75), bottom: 29, borderRadius: 2 }}
+            style={{ height: 6, width: Math.min(80, safeSlipPct * 1.5), left: 105 - Math.min(40, safeSlipPct * 0.75), bottom: 33, borderRadius: 2 }}
           />
         )}
         
@@ -648,7 +1142,7 @@ const defaultGaugeOrder = [
   // Fluids
   'coolant', 'oil-temp', 'oil-press', 'battery',
   // Drivetrain
-  'gear', 'dshaft', 'clutch', 'whl-torq', 'whl-force', 'knock',
+  'gear', 'dshaft', 'clutch', 'clutch-slip', 'whl-torq', 'whl-force', 'knock',
   // Traction
   'frt-load', 'rear-load', 'wt-trans', 'tire-slip', 'trac-lmt', 'tire-temp', 'patch',
   // Forces
@@ -800,8 +1294,12 @@ export default function Dashboard() {
 
   const tick = useCallback(() => {
     const now = performance.now();
-    const delta = now - lastTimeRef.current;
+    let delta = now - lastTimeRef.current;
     lastTimeRef.current = now;
+    // Clamp delta: prevents physics blowup from tab-switch, GC pause, or heavy render
+    // The sim also sub-steps internally, but clamping here is first line of defense
+    if (delta > 200) delta = 16; // treat huge gaps as single normal frame
+    if (delta < 0) delta = 16;   // clock went backwards (rare)
     const newState = simRef.current.update(delta);
 
     if (newState.quarterMileET !== null && newState.quarterMileActive) {
@@ -975,7 +1473,10 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Tire Visual at top */}
+        {/* Porsche Gauge Cluster */}
+        <PorscheGaugeCluster rpm={state.rpm} speedMph={state.speedMph} wheelSpeedMph={state.wheelSpeedMph} redline={8000} />
+
+        {/* Tire Visual */}
         <WheelVisual 
           tireRpm={state.tireRpm} 
           slipPct={state.tireSlipPercent}
@@ -989,6 +1490,36 @@ export default function Dashboard() {
           boostPsi={state.boostPsi}
           turboEnabled={state.turboEnabled}
         />
+
+          {/* FWD Drivetrain Visual (Front 3/4 View) */}
+          <div className="flex flex-col items-center py-2 col-span-4">
+            <FWDDrivetrainVisual
+              tireRpm={state.tireRpm}
+              driveshaftRpm={state.driveshaftRpm}
+              currentGear={state.currentGearDisplay}
+              currentGearRatio={state.currentGearRatio}
+              tireWidthMm={195}
+              tireAspectRatio={55}
+              rimDiameterIn={15}
+              slipPct={state.tireSlipPercent}
+              clutchStatus={state.clutchStatus}
+              rpm={state.rpm}
+            />
+          </div>
+
+          {/* 3D Interactive Drivetrain View */}
+          <div className="flex flex-col items-center py-2 col-span-4">
+            <DrivetrainView3D
+              tireRpm={state.tireRpm}
+              rpm={state.rpm}
+              clutchStatus={state.clutchStatus}
+              clutchSlipPct={state.clutchSlipPct}
+              currentGear={state.currentGearDisplay}
+              currentGearRatio={state.currentGearRatio}
+              slipPct={state.tireSlipPercent}
+              drivetrainType={state.drivetrainType}
+            />
+          </div>
 
         <DragContext.Provider value={dragContextValue}>
           <div className="grid grid-cols-4 gap-0" data-testid="gauge-grid">
@@ -1030,6 +1561,7 @@ export default function Dashboard() {
                 'gear': { label: 'Gear', value: state.currentGearDisplay, unit: `ratio ${state.currentGearRatio}`, testId: 'gauge-gear', section: 'Drivetrain' },
                 'dshaft': { label: 'D-Shaft', value: state.driveshaftRpm, unit: 'rpm', testId: 'gauge-dshaft' },
                 'clutch': { label: 'Clutch', value: state.clutchStatus, unit: 'status', testId: 'gauge-clutch' },
+                'clutch-slip': { label: 'Clutch Slip', value: state.clutchSlipPct, unit: '%', testId: 'gauge-clutch-slip' },
                 'whl-torq': { label: 'Whl Torq', value: state.wheelTorque, unit: 'ft-lb', testId: 'gauge-whl-torq' },
                 'whl-force': { label: 'Whl Force', value: state.wheelForce, unit: 'lbs', testId: 'gauge-whl-force' },
                 'knock': { label: 'Knock', value: state.knockCount, unit: 'events', testId: 'gauge-knock' },

@@ -82,6 +82,7 @@ export interface EcuConfig {
   frontWeightBias: number;
   optimalSlipRatio: number;
   shiftTimeMs: number;
+  clutchMaxTorqueNm: number;  // Max torque the clutch can transmit before slipping (pressure plate clamping force)
 
   fanOnTemp: number;
   fanOffTemp: number;
@@ -113,6 +114,25 @@ export interface EcuConfig {
   nitrousHpAdder: number;
   nitrousActivationRpm: number;
   nitrousFullThrottleOnly: boolean;
+
+  // ── Fuel system ──
+  fuelType: 'gasoline' | 'e85' | 'methanol' | 'flex';
+  ethanolContentPct: number;        // 0-100; for flex fuel blending
+  gasolineOctane: 87 | 91 | 93 | 100;
+  intercoolerEnabled: boolean;
+  intercoolerEfficiencyPct: number;  // 50-100; charge air cooling effectiveness
+
+  // ── Weather / environment ──
+  ambientTempF: number;             // Ambient temperature in °F
+  humidityPct: number;              // Relative humidity 0-100
+  altitudeFt: number;               // Elevation in feet
+
+  // ── Drivetrain layout ──
+  drivetrainType: 'FWD' | 'RWD' | 'AWD';
+  frontDiffType: 'open' | 'lsd' | 'locked';
+  rearDiffType: 'open' | 'lsd' | 'locked';
+  centerDiffType: 'open' | 'viscous' | 'torsen' | 'locked';
+  awdFrontBias: number;             // 0-1; front torque split for AWD (0.6 = 60% front)
 }
 
 export function getDefaultEcuConfig(): EcuConfig {
@@ -122,7 +142,7 @@ export function getDefaultEcuConfig(): EcuConfig {
     revLimitType: 'fuel_cut',
     softCutRpm: 8000,
     softCutRetard: 10,
-    speedLimiterMph: 130,
+    speedLimiterMph: 180,
 
     vtecEngageRpm: 5500,
     vtecDisengageRpm: 5200,
@@ -203,6 +223,7 @@ export function getDefaultEcuConfig(): EcuConfig {
     frontWeightBias: 0.61,
     optimalSlipRatio: 0.10,
     shiftTimeMs: 250,
+    clutchMaxTorqueNm: 200,   // Stock B16A2 clutch capacity ~200 Nm; aftermarket stage 2+: 350-600+ Nm
 
     fanOnTemp: 200,
     fanOffTemp: 190,
@@ -234,6 +255,25 @@ export function getDefaultEcuConfig(): EcuConfig {
     nitrousHpAdder: 50,
     nitrousActivationRpm: 3000,
     nitrousFullThrottleOnly: true,
+
+    // ── Fuel system ──
+    fuelType: 'gasoline',
+    ethanolContentPct: 0,
+    gasolineOctane: 91,
+    intercoolerEnabled: false,
+    intercoolerEfficiencyPct: 70,
+
+    // ── Weather / environment ──
+    ambientTempF: 77,               // Standard 77°F / 25°C
+    humidityPct: 50,
+    altitudeFt: 0,
+
+    // ── Drivetrain layout (EM1 stock = FWD) ──
+    drivetrainType: 'FWD',
+    frontDiffType: 'open',
+    rearDiffType: 'open',
+    centerDiffType: 'open',
+    awdFrontBias: 0.6,
   };
 }
 
@@ -259,6 +299,7 @@ export interface EngineState {
   horsepower: number;
   fuelConsumption: number;
   tireRpm: number;
+  wheelSpeedMph: number;
   speedMph: number;
   distanceFt: number;
   elapsedTime: number;
@@ -272,6 +313,7 @@ export interface EngineState {
   currentGearRatio: number;
   driveshaftRpm: number;
   clutchStatus: string;
+  clutchSlipPct: number;       // 0 = fully locked, >0 = clutch disc slipping
   wheelTorque: number;
   wheelForce: number;
 
@@ -323,6 +365,15 @@ export interface EngineState {
   turboEnabled: boolean;
   nitrousActive: boolean;
   superchargerEnabled: boolean;
+
+  // Fuel / weather / drivetrain readouts
+  fuelType: string;
+  iatF: number;
+  airDensity: number;
+  densityCorrection: number;
+  drivetrainType: string;
+  frontDiffType: string;
+  rearDiffType: string;
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -584,15 +635,20 @@ interface TireCompoundData {
 
 const TIRE_COMPOUNDS: Record<string, TireCompoundData> = {
   // Street: OEM all-season tires - matches D=0.88
+  // Work fine at ambient temps, minimal cold penalty
   street: { baseGrip: 0.88, optimalTempLow: 70, optimalTempHigh: 190, coldGripFactor: 0.97, hotGripFactor: 0.75, heatRate: 1.0, coolRate: 1.0 },
   // Sport: Summer performance tires - matches D=0.95
-  sport: { baseGrip: 0.95, optimalTempLow: 100, optimalTempHigh: 200, coldGripFactor: 0.90, hotGripFactor: 0.65, heatRate: 1.4, coolRate: 0.9 },
+  // Need slight warmth but cold grip is still strong
+  sport: { baseGrip: 0.95, optimalTempLow: 100, optimalTempHigh: 200, coldGripFactor: 0.93, hotGripFactor: 0.65, heatRate: 1.4, coolRate: 0.9 },
   // Semi-slick: R-compound track tires - matches D=1.15
-  semi_slick: { baseGrip: 1.15, optimalTempLow: 160, optimalTempHigh: 250, coldGripFactor: 0.75, hotGripFactor: 0.60, heatRate: 1.5, coolRate: 0.8 },
+  // Noticeable cold penalty but soft compound still grips well below temp
+  semi_slick: { baseGrip: 1.15, optimalTempLow: 140, optimalTempHigh: 250, coldGripFactor: 0.82, hotGripFactor: 0.60, heatRate: 1.5, coolRate: 0.8 },
   // Full slick: Racing slicks - matches D=1.30
-  full_slick: { baseGrip: 1.30, optimalTempLow: 200, optimalTempHigh: 280, coldGripFactor: 0.50, hotGripFactor: 0.55, heatRate: 2.0, coolRate: 0.7 },
+  // Cold penalty meaningful but even cold, rubber is softer than any street tire
+  full_slick: { baseGrip: 1.30, optimalTempLow: 170, optimalTempHigh: 280, coldGripFactor: 0.72, hotGripFactor: 0.55, heatRate: 2.0, coolRate: 0.7 },
   // Drag slick: Extreme traction - matches D=1.50
-  drag_slick: { baseGrip: 1.50, optimalTempLow: 220, optimalTempHigh: 320, coldGripFactor: 0.35, hotGripFactor: 0.50, heatRate: 2.5, coolRate: 0.6 },
+  // Designed for burnout warmup; cold still beats all other compounds
+  drag_slick: { baseGrip: 1.50, optimalTempLow: 180, optimalTempHigh: 320, coldGripFactor: 0.68, hotGripFactor: 0.50, heatRate: 2.5, coolRate: 0.6 },
 };
 
 function getTireGripAtTemp(compound: TireCompoundData, temp: number, gripPct: number, sensitivity: number): number {
@@ -745,9 +801,68 @@ function getGear(speedMph: number): number {
 }
 
 const QUARTER_MILE_FT = 1320;
-const AIR_DENSITY = 1.225;
+const STD_AIR_DENSITY = 1.225;  // kg/m³ at sea level 15°C
 const GRAVITY = 9.81;
 const N_TO_LBS = 0.2248;
+
+// ── Air density model (temperature, humidity, altitude) ──
+function getAirDensity(tempF: number, humidityPct: number, altitudeFt: number): number {
+  const tempK = (tempF - 32) * 5 / 9 + 273.15;
+  // Barometric pressure lapse with altitude (tropospheric model)
+  const pressurePa = 101325 * Math.pow(1 - 2.25577e-5 * (altitudeFt * 0.3048), 5.25588);
+  // Saturation vapor pressure (Buck equation)
+  const tempC = tempK - 273.15;
+  const pSat = 611.21 * Math.exp((18.678 - tempC / 234.5) * (tempC / (257.14 + tempC)));
+  const pVapor = (humidityPct / 100) * pSat;
+  const pDry = pressurePa - pVapor;
+  // Density: dry air + water vapor (Rd=287.058, Rv=461.495)
+  return (pDry / (287.058 * tempK)) + (pVapor / (461.495 * tempK));
+}
+
+// ── Fuel type multipliers ──
+function getFuelMultipliers(config: EcuConfig): { powerMult: number; octaneBonus: number; afrTarget: number } {
+  let ethPct = 0;
+  switch (config.fuelType) {
+    case 'e85':      ethPct = 85; break;
+    case 'methanol': ethPct = 100; break; // treat methanol as max-ethanol equivalent for power
+    case 'flex':     ethPct = config.ethanolContentPct; break;
+    default:         ethPct = 0;
+  }
+  // Ethanol: ~3-5% more power per 10% ethanol, cooler charge temps
+  // Methanol: ~5-8% more power (higher latent heat of vaporization)
+  const ethanolPowerBonus = config.fuelType === 'methanol'
+    ? 0.08  // methanol: +8% power
+    : (ethPct / 100) * 0.05;  // E85: up to +5% at full E85
+  // Octane bonus: higher octane allows more aggressive timing → more power
+  // Baseline = 91 octane, each octane point above gives ~0.5% power
+  const octaneBase = config.fuelType === 'gasoline' ? config.gasolineOctane : 105; // E85/meth = ~105 equivalent
+  const octaneBonus = (octaneBase - 91) * 0.005;
+  // Ethanol AFR: stoich for E85 ≈ 9.8, gasoline ≈ 14.7, methanol ≈ 6.5
+  const afrTarget = config.fuelType === 'methanol' ? 6.5
+    : 14.7 - (ethPct / 100) * (14.7 - 9.8);
+  return {
+    powerMult: 1 + ethanolPowerBonus + octaneBonus,
+    octaneBonus,
+    afrTarget,
+  };
+}
+
+// ── Intake Air Temperature model ──
+function getIATCorrection(ambientTempF: number, boostPsi: number, intercoolerEnabled: boolean, intercoolerEff: number): { iatF: number; densityCorrection: number } {
+  // Boost heats the charge air significantly
+  const compressorHeatF = boostPsi * 12; // ~12°F per psi of boost
+  let chargeTemp = ambientTempF + compressorHeatF;
+  if (intercoolerEnabled && boostPsi > 0) {
+    // Intercooler removes a percentage of the heat added by compression
+    const heatRemoved = compressorHeatF * (intercoolerEff / 100);
+    chargeTemp -= heatRemoved;
+  }
+  // Density correction: colder air = denser = more power
+  // Reference: 77°F (25°C). Every 10°F colder ≈ +1.7% density
+  const refTempF = 77;
+  const densityCorrection = (refTempF + 459.67) / (chargeTemp + 459.67); // Rankine ratio
+  return { iatF: chargeTemp, densityCorrection };
+}
 
 interface DerivedConstants {
   tireCircumferenceFt: number;
@@ -760,17 +875,16 @@ interface DerivedConstants {
   shiftTimeS: number;
   drivetrainLoss: number;
   contactPatchArea: number;
+  drivenWheels: number;  // 2 for FWD/RWD, 4 for AWD
 }
 
 function computeDerived(config: EcuConfig): DerivedConstants {
   const tireCircumferenceFt = (config.tireDiameterIn * Math.PI) / 12;
   const tireRadiusM = config.tireDiameterIn * 0.0254 / 2;
   const tireMassKg = config.tireMassLb * 0.4536;
-  // Wheel+tire rotational inertia: I = k * m * r² where k ≈ 0.75 for wheel+tire combo
-  // (tire mass concentrated near outer radius, wheel mass more central)
-  // Only count driven wheels for FWD (2 wheels)
   const tireInertia = 0.75 * tireMassKg * tireRadiusM * tireRadiusM;
-  const totalTireInertia = 2 * tireInertia;  // FWD - only 2 driven wheels
+  const drivenWheels = config.drivetrainType === 'AWD' ? 4 : 2;
+  const totalTireInertia = drivenWheels * tireInertia;
   const vehicleMassKg = config.vehicleMassLb * 0.4536;
   const effectiveMassKg = vehicleMassKg + totalTireInertia / (tireRadiusM * tireRadiusM);
   const shiftTimeS = config.shiftTimeMs / 1000;
@@ -789,6 +903,7 @@ function computeDerived(config: EcuConfig): DerivedConstants {
     shiftTimeS,
     drivetrainLoss,
     contactPatchArea,
+    drivenWheels,
   };
 }
 
@@ -922,7 +1037,25 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
   }
 
   function update(deltaMs: number): EngineState {
-    const dt = deltaMs / 1000;
+    // ── CRITICAL: Clamp delta to prevent physics divergence ──
+    // Large deltas (tab backgrounded, GC pause, heavy rendering) cause
+    // speed/RPM to overshoot, NaN propagation, and audio freeze.
+    // Max single-step dt = 50ms (20 FPS minimum). If larger, sub-step.
+    const MAX_STEP_MS = 50;
+    const clampedDeltaMs = Math.min(Math.max(deltaMs, 0), 200); // absolute max 200ms
+    if (clampedDeltaMs > MAX_STEP_MS) {
+      // Sub-step: run multiple small physics steps
+      const steps = Math.ceil(clampedDeltaMs / MAX_STEP_MS);
+      const stepMs = clampedDeltaMs / steps;
+      let lastState: EngineState | null = null;
+      for (let i = 0; i < steps; i++) {
+        lastState = update(stepMs);
+      }
+      return lastState!;
+    }
+    const dt = clampedDeltaMs / 1000;
+    // Guard against zero/negative dt
+    if (dt <= 0) return update(16); // fallback to ~60fps step
 
     const idleRpm = config.targetIdleRpm;
     const redline = config.redlineRpm;
@@ -931,19 +1064,43 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
 
     const compound = TIRE_COMPOUNDS[config.tireCompound] || TIRE_COMPOUNDS.street;
 
+    // ── Weather & fuel corrections (computed once per frame) ──
+    const airDensity = getAirDensity(config.ambientTempF, config.humidityPct, config.altitudeFt);
+    const airDensityRatio = airDensity / STD_AIR_DENSITY; // <1 in hot/high altitude, >1 in cold
+    const fuelMults = getFuelMultipliers(config);
+    const iatData = getIATCorrection(config.ambientTempF, boostPsi, config.intercoolerEnabled, config.intercoolerEfficiencyPct);
+    // Combined intake charge correction: denser air + fuel octane/type bonus
+    const chargePowerMult = iatData.densityCorrection * fuelMults.powerMult;
+    // Cold-weather traction penalty: below 40°F, rubber hardens
+    const coldTractionPenalty = config.ambientTempF < 40
+      ? clamp(1 - (40 - config.ambientTempF) / 80 * 0.15, 0.85, 1) : 1;
+    // Drivetrain traction: which axle is driven?
+    const isFWD = config.drivetrainType === 'FWD';
+    const isRWD = config.drivetrainType === 'RWD';
+    const isAWD = config.drivetrainType === 'AWD';
+    const drivenAxleBias = isFWD ? config.frontWeightBias
+      : isRWD ? (1 - config.frontWeightBias)
+      : 1; // AWD uses both axles — full weight for traction
+
     let wheelForceN = 0;
     let dragForceN = 0;
     let rollingForceN = 0;
     let netForceN = 0;
     let weightTransferN = 0;
+    // Driven axle load depends on drivetrain type
     let frontAxleLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
-    let effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity);
-    let patchArea = getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, frontAxleLoadN);
+    let rearAxleLoadN = derived.vehicleMassKg * GRAVITY * (1 - config.frontWeightBias);
+    let drivenAxleLoadN = isFWD ? frontAxleLoadN
+      : isRWD ? rearAxleLoadN
+      : (frontAxleLoadN + rearAxleLoadN); // AWD = full vehicle weight for traction
+    let effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity) * coldTractionPenalty;
+    let patchArea = getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, drivenAxleLoadN);
     let patchMultiplier = clamp(patchArea / 30, 0.7, 1.4);
     let finalGrip = effectiveGrip * patchMultiplier;
-    let maxTractionForceN = frontAxleLoadN * finalGrip;
+    let maxTractionForceN = drivenAxleLoadN * finalGrip;
     let slipRatio = 0;
     let clutchStatus = "ENGAGED";
+    let clutchSlipPct = 0;
     let wheelTorqueFtLb = 0;
     let gearRatio = config.gearRatios[0];
     let totalRatio = gearRatio * config.finalDriveRatio;
@@ -1077,8 +1234,16 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
           const scMult = 1 + (boostPsi / 14.7) * 0.9;
           launchTorqueFtLb *= scMult;
         }
+
+        // Fuel type & intake air charge correction
+        launchTorqueFtLb *= chargePowerMult;
+
+        // Compute raw engine crankshaft torque for wheelspin detection
+        // (uses full engine torque — clutch capacity is applied later in the
+        //  post-launch driving-force calculation that actually accelerates the car)
+        const engineTorqueNmRaw = launchTorqueFtLb * 1.3558;
         
-        const launchForceN = (launchTorqueFtLb * 1.3558 * totalRatio * (1 - derived.drivetrainLoss)) / wheelRadius;
+        const launchForceN = (engineTorqueNmRaw * totalRatio * (1 - derived.drivetrainLoss)) / wheelRadius;
         
         // Check traction limit - use static load (weight transfer comes later)
         const staticFrontLoad = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
@@ -1176,6 +1341,9 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
             }
           }
 
+          // Fuel type & intake air charge correction
+          torqueFtLb *= chargePowerMult;
+
           const timingFactor = Math.max(0.3, 1 - timingRetardTotal / 60);
           torqueFtLb *= timingFactor;
 
@@ -1183,8 +1351,21 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
           torqueFtLb *= fuelFactor;
 
           const engineTorqueNm = torqueFtLb * 1.3558;
-          let rawWheelForceN = (engineTorqueNm * totalRatio * (1 - derived.drivetrainLoss)) / wheelRadius;
-          wheelTorqueFtLb = torqueFtLb * totalRatio * (1 - derived.drivetrainLoss);
+
+          // --- Clutch torque capacity model ---
+          // The clutch disc can only transmit up to clutchMaxTorqueNm.
+          // Any excess torque is lost as friction heat on the disc (engine revs freely).
+          let transmittedTorqueNm = engineTorqueNm;
+          if (engineTorqueNm > config.clutchMaxTorqueNm) {
+            transmittedTorqueNm = config.clutchMaxTorqueNm;
+            const cSlip = 1 - config.clutchMaxTorqueNm / engineTorqueNm;
+            clutchSlipPct = Math.max(clutchSlipPct, Math.round(cSlip * 1000) / 10);
+          } else {
+            clutchSlipPct = 0;
+          }
+
+          let rawWheelForceN = (transmittedTorqueNm * totalRatio * (1 - derived.drivetrainLoss)) / wheelRadius;
+          wheelTorqueFtLb = (transmittedTorqueNm / 1.3558) * totalRatio * (1 - derived.drivetrainLoss);
           
           // REALISTIC traction limiting - mainly affects low speed launches
           // At higher speeds, tires can handle more power (warmed up, less torque multiplication)
@@ -1219,15 +1400,27 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       weightTransferN = (derived.vehicleMassKg * Math.max(prevAccelMps2, 0) * config.cgHeightM) / config.wheelbaseM;
       weightTransferN *= aiCorrections.weightTransferMultiplier;
       const staticFrontLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
-      // FWD: weight transfers to rear during acceleration, but front still has good load
-      // Real Civic Si launches well despite FWD due to low CG and good weight distribution
-      frontAxleLoadN = Math.max(staticFrontLoadN - weightTransferN * 0.25, derived.vehicleMassKg * GRAVITY * 0.55);
+      const staticRearLoadN = derived.vehicleMassKg * GRAVITY * (1 - config.frontWeightBias);
+      // Weight transfer: under acceleration, load shifts to rear
+      frontAxleLoadN = staticFrontLoadN - weightTransferN;
+      rearAxleLoadN = staticRearLoadN + weightTransferN;
+      // Driven axle load for traction calculation
+      if (isFWD) {
+        // FWD loses some traction under acceleration (weight lifts off front)
+        drivenAxleLoadN = Math.max(frontAxleLoadN, derived.vehicleMassKg * GRAVITY * 0.35);
+      } else if (isRWD) {
+        // RWD gains traction under acceleration (weight pushes rear down)
+        drivenAxleLoadN = rearAxleLoadN;
+      } else {
+        // AWD: total vehicle weight available for traction (split between axles)
+        drivenAxleLoadN = frontAxleLoadN + rearAxleLoadN;
+      }
 
-      effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity);
-      patchArea = getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, frontAxleLoadN);
+      effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity) * coldTractionPenalty;
+      patchArea = getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, drivenAxleLoadN);
       patchMultiplier = clamp(patchArea / 30, 0.7, 1.4);
       finalGrip = effectiveGrip * patchMultiplier;
-      maxTractionForceN = frontAxleLoadN * finalGrip * aiCorrections.gripMultiplier;
+      maxTractionForceN = drivenAxleLoadN * finalGrip * aiCorrections.gripMultiplier;
 
       // Calculate current horsepower for power-based traction loss
       const currentHorsePower = wheelTorqueFtLb > 0 ? (wheelTorqueFtLb * currentRpm) / (5252 * totalRatio) : 0;
@@ -1284,7 +1477,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
         }
       }
 
-      dragForceN = 0.5 * AIR_DENSITY * config.dragCoefficient * config.frontalAreaM2 * speedMps * speedMps * aiCorrections.dragMultiplier;
+      dragForceN = 0.5 * airDensity * config.dragCoefficient * config.frontalAreaM2 * speedMps * speedMps * aiCorrections.dragMultiplier;
       rollingForceN = config.rollingResistanceCoeff * derived.vehicleMassKg * GRAVITY;
 
       netForceN = wheelForceN - dragForceN - rollingForceN;
@@ -1293,10 +1486,19 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       prevSpeedMps = speedMps;
       speedMps = Math.max(speedMps + accelMps2 * dt, 0);
 
+      // Speed limiter via progressive fuel cut (like a real ECU)
+      // Starts cutting fuel 5mph below the limit, full cut at limit
       const speedLimitMps = config.speedLimiterMph / 2.237;
-      if (speedMps > speedLimitMps) {
-        speedMps = speedLimitMps;
+      const speedLimitOnsetMps = (config.speedLimiterMph - 5) / 2.237;
+      if (speedMps > speedLimitOnsetMps) {
+        const limitProgress = clamp((speedMps - speedLimitOnsetMps) / (speedLimitMps - speedLimitOnsetMps), 0, 1);
+        // Progressive braking force — simulates fuel cut + aero drag at limit
+        const limitForce = limitProgress * derived.vehicleMassKg * 3.0; // strong decel
+        speedMps = Math.max(speedMps - (limitForce / derived.effectiveMassKg) * dt, 0);
+        if (limitProgress > 0.5) fuelCutActive = true;
       }
+      // Hard backstop — never exceed limiter
+      if (speedMps > speedLimitMps) speedMps = speedLimitMps;
 
       const avgSpeedMps = (prevSpeedMps + speedMps) / 2;
       distanceFt += avgSpeedMps * dt * 3.28084;
@@ -1371,11 +1573,13 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       const wheelRadius = derived.tireRadiusM;
 
       frontAxleLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
-      effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity);
-      patchArea = getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, frontAxleLoadN);
+      rearAxleLoadN = derived.vehicleMassKg * GRAVITY * (1 - config.frontWeightBias);
+      drivenAxleLoadN = isFWD ? frontAxleLoadN : isRWD ? rearAxleLoadN : (frontAxleLoadN + rearAxleLoadN);
+      effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity) * coldTractionPenalty;
+      patchArea = getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, drivenAxleLoadN);
       patchMultiplier = clamp(patchArea / 30, 0.7, 1.4);
       finalGrip = effectiveGrip * patchMultiplier;
-      maxTractionForceN = frontAxleLoadN * finalGrip * aiCorrections.gripMultiplier;
+      maxTractionForceN = drivenAxleLoadN * finalGrip * aiCorrections.gripMultiplier;
 
       let freeRevTorque = getB16Torque(currentRpm, throttle, config.compressionRatio);
       const freeRevCamMult = getCamTorqueMultiplier(currentRpm, vtecActive, config);
@@ -1395,14 +1599,23 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
         }
       }
 
+      // Fuel type & intake air charge correction
+      freeRevTorque *= chargePowerMult;
+
       const freeRevTimingFactor = Math.max(0.3, 1 - timingRetardTotal / 60);
       freeRevTorque *= freeRevTimingFactor;
       const freeRevFuelFactor = 1 - fuelCutFraction;
       freeRevTorque *= freeRevFuelFactor;
 
-      const engineTorqueNm = freeRevTorque * 1.3558;
-      wheelForceN = (engineTorqueNm * totalRatio * (1 - derived.drivetrainLoss)) / wheelRadius;
-      wheelTorqueFtLb = freeRevTorque * totalRatio * (1 - derived.drivetrainLoss);
+      let engineTorqueNmFree = freeRevTorque * 1.3558;
+      // Clutch torque capacity limit in free-rev / normal driving
+      if (engineTorqueNmFree > config.clutchMaxTorqueNm) {
+        const cSlip = 1 - config.clutchMaxTorqueNm / engineTorqueNmFree;
+        clutchSlipPct = Math.max(clutchSlipPct, Math.round(cSlip * 1000) / 10);
+        engineTorqueNmFree = config.clutchMaxTorqueNm;
+      }
+      wheelForceN = (engineTorqueNmFree * totalRatio * (1 - derived.drivetrainLoss)) / wheelRadius;
+      wheelTorqueFtLb = (engineTorqueNmFree / 1.3558) * totalRatio * (1 - derived.drivetrainLoss);
 
       // Calculate horsepower for power-based traction loss in free-rev mode
       const freeRevHorsePower = wheelTorqueFtLb > 0 ? (wheelTorqueFtLb * currentRpm) / (5252 * totalRatio) : 0;
@@ -1499,6 +1712,9 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
         torque += nitrousAdder;
       }
     }
+
+    // Apply fuel/IAT charge correction to display torque too
+    torque *= chargePowerMult;
 
     const hp = (torque * currentRpm) / 5252;
 
@@ -1616,13 +1832,34 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     const currentGearRatio = gearRatio;
     const driveshaftRpm = gearRatio > 0 ? currentRpm / gearRatio : 0;
 
-    const rearAxleLoadN = derived.vehicleMassKg * GRAVITY - frontAxleLoadN;
+    // Update rear axle load for display (already computed in QM path, recalc for non-QM)
+    if (!qmActive) {
+      rearAxleLoadN = derived.vehicleMassKg * GRAVITY - frontAxleLoadN;
+    }
 
     const tireSlipPercent = Math.abs(slipRatio) * 100;
 
     if (fuelCutFraction > 0) {
       fuelCutActive = true;
     }
+
+    // ── CRITICAL: NaN/Infinity sanitization ──
+    // Prevents cascading corruption from any single bad calculation.
+    // If any value goes NaN/Infinity, reset to safe defaults.
+    function sanitize(v: number, fallback: number, min?: number, max?: number): number {
+      if (!Number.isFinite(v)) return fallback;
+      if (min !== undefined && v < min) return min;
+      if (max !== undefined && v > max) return max;
+      return v;
+    }
+    currentRpm = sanitize(currentRpm, idleRpm, 0, fuelCutRpm + 500);
+    speedMps = sanitize(speedMps, 0, 0, 100); // max ~224mph
+    boostPsi = sanitize(boostPsi, 0, -20, 50);
+    tireTemp = sanitize(tireTemp, 100, 30, 500);
+    coolantTemp = sanitize(coolantTemp, 185, 50, 350);
+    oilTemp = sanitize(oilTemp, 210, 50, 400);
+    crankAngle = sanitize(crankAngle, 0, 0, 720);
+    distanceFt = sanitize(distanceFt, distanceFt, 0, 100000);
 
     return {
       rpm: Math.round(currentRpm),
@@ -1645,7 +1882,9 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       torque: Math.round(torque * 10) / 10,
       horsepower: Math.round(hp * 10) / 10,
       fuelConsumption: Math.round(fuelConsumption * 1000) / 1000,
+      clutchSlipPct: clutchSlipPct,
       tireRpm: Math.round(tireRpm),
+      wheelSpeedMph: Math.round(tireRpm * derived.tireCircumferenceFt * 60 / 5280 * 10) / 10,
       speedMph: Math.round(speedMph * 10) / 10,
       distanceFt: Math.round(distanceFt * 10) / 10,
       elapsedTime: Math.round(qmElapsedTime * 1000) / 1000,
@@ -1658,7 +1897,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       currentGearDisplay,
       currentGearRatio: Math.round(currentGearRatio * 1000) / 1000,
       driveshaftRpm: Math.round(driveshaftRpm),
-      clutchStatus,
+      clutchStatus: clutchSlipPct > 1 ? 'SLIPPING' : clutchStatus,
       wheelTorque: Math.round(wheelTorqueFtLb * 10) / 10,
       wheelForce: Math.round(wheelForceN * N_TO_LBS * 10) / 10,
 
@@ -1710,6 +1949,15 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       turboEnabled: config.turboEnabled,
       nitrousActive: nitrousActiveNow,
       superchargerEnabled: config.superchargerEnabled,
+
+      // Fuel / weather / drivetrain readouts
+      fuelType: config.fuelType,
+      iatF: Math.round(iatData.iatF),
+      airDensity: Math.round(airDensity * 1000) / 1000,
+      densityCorrection: Math.round(iatData.densityCorrection * 1000) / 1000,
+      drivetrainType: config.drivetrainType,
+      frontDiffType: config.frontDiffType,
+      rearDiffType: config.rearDiffType,
     };
   }
 

@@ -1,0 +1,3 @@
+Future Features:
+
+I want an added feature. Can you somehow create an administration backend, or login that only I as the creator and owner of this application should have access to. Within it, all users connected to 

@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "Mono2",
+			"path": "../Mono2"
+		}
+	],
+	"settings": {
+		"powershell.cwd": "Mono5"
+	}
+}

@@ -195,6 +195,11 @@ function getStringOptions(key: ConfigKey): string[] {
     case "o2SensorType": return ["narrowband", "wideband"];
     case "superchargerType": return ["centrifugal", "roots", "twinscrew"];
     case "tireCompound": return ["street", "sport", "semi_slick", "full_slick", "drag_slick"];
+    case "fuelType": return ["gasoline", "e85", "methanol", "flex"];
+    case "drivetrainType": return ["FWD", "RWD", "AWD"];
+    case "frontDiffType": return ["open", "lsd", "locked"];
+    case "rearDiffType": return ["open", "lsd", "locked"];
+    case "centerDiffType": return ["open", "viscous", "torsen", "locked"];
     default: return [];
   }
 }
@@ -406,6 +411,13 @@ export default function EcuPage() {
         <ParamRow label="VTEC Exhaust Duration" configKey="vtecExhaustDuration" config={config} onChange={handleChange} unit="deg" step={2} min={200} testId="ecu-cam-profile-vtec-exhaust-dur" />
 
         <SectionHeader title="Fuel Tuning" />
+        <ParamRow label="Fuel Type" configKey="fuelType" config={config} onChange={handleChange} testId="ecu-fuel-type" />
+        {config.fuelType === 'flex' && (
+          <ParamRow label="Ethanol Content" configKey="ethanolContentPct" config={config} onChange={handleChange} unit="%" step={5} min={0} testId="ecu-ethanol-pct" />
+        )}
+        {(config.fuelType === 'gasoline' || config.fuelType === 'flex') && (
+          <ParamRow label="Gasoline Octane" configKey="gasolineOctane" config={config} onChange={handleChange} unit="oct" step={1} min={87} testId="ecu-gasoline-octane" />
+        )}
         <ParamRow label="Injector Size" configKey="injectorSizeCc" config={config} onChange={handleChange} unit="cc" step={10} min={100} testId="ecu-injector-size" />
         <ParamRow label="Fuel Pressure" configKey="fuelPressurePsi" config={config} onChange={handleChange} unit="psi" step={1} min={20} testId="ecu-fuel-pressure" />
         <ParamRow label="AFR Target Idle" configKey="targetAfrIdle" config={config} onChange={handleChange} unit="ratio" step={0.1} min={10} testId="ecu-afr-idle" />
@@ -437,6 +449,12 @@ export default function EcuPage() {
         <ParamRow label="Boost by Gear" configKey="boostByGearEnabled" config={config} onChange={handleChange} testId="ecu-boost-by-gear-enabled" />
         {config.boostByGearEnabled && (
           <ArrayParamRow label="Per-Gear Targets" configKey="boostByGear" config={config} onChange={handleChange} unit="psi" step={1} labels={["1st", "2nd", "3rd", "4th", "5th"]} testId="ecu-boost-gear" />
+        )}
+
+        <SectionHeader title="Intercooler" />
+        <ParamRow label="Intercooler" configKey="intercoolerEnabled" config={config} onChange={handleChange} testId="ecu-intercooler-enabled" />
+        {config.intercoolerEnabled && (
+          <ParamRow label="IC Efficiency" configKey="intercoolerEfficiencyPct" config={config} onChange={handleChange} unit="%" step={5} min={50} testId="ecu-intercooler-eff" />
         )}
 
         <SectionHeader title="Supercharger" />
@@ -486,6 +504,24 @@ export default function EcuPage() {
         <ParamRow label="Grip %" configKey="tireGripPct" config={config} onChange={handleChange} unit="%" step={5} min={50} testId="ecu-tire-grip-pct" />
         <ParamRow label="Temp Sensitivity" configKey="tireTempSensitivity" config={config} onChange={handleChange} unit="x" step={0.1} min={0} testId="ecu-tire-temp-sens" />
 
+        <SectionHeader title="Weather / Environment" />
+        <ParamRow label="Ambient Temp" configKey="ambientTempF" config={config} onChange={handleChange} unit="°F" step={5} min={-20} testId="ecu-ambient-temp" />
+        <ParamRow label="Humidity" configKey="humidityPct" config={config} onChange={handleChange} unit="%" step={5} min={0} testId="ecu-humidity" />
+        <ParamRow label="Altitude" configKey="altitudeFt" config={config} onChange={handleChange} unit="ft" step={500} min={0} testId="ecu-altitude" />
+
+        <SectionHeader title="Drivetrain Layout" />
+        <ParamRow label="Drive Type" configKey="drivetrainType" config={config} onChange={handleChange} testId="ecu-drivetrain-type" />
+        <ParamRow label="Front Diff" configKey="frontDiffType" config={config} onChange={handleChange} testId="ecu-front-diff" />
+        {(config.drivetrainType === 'RWD' || config.drivetrainType === 'AWD') && (
+          <ParamRow label="Rear Diff" configKey="rearDiffType" config={config} onChange={handleChange} testId="ecu-rear-diff" />
+        )}
+        {config.drivetrainType === 'AWD' && (
+          <>
+            <ParamRow label="Center Diff" configKey="centerDiffType" config={config} onChange={handleChange} testId="ecu-center-diff" />
+            <ParamRow label="AWD Front Bias" configKey="awdFrontBias" config={config} onChange={handleChange} unit="ratio" step={0.05} min={0.1} testId="ecu-awd-front-bias" />
+          </>
+        )}
+
         <SectionHeader title="Vehicle" />
         <ParamRow label="Vehicle Mass" configKey="vehicleMassLb" config={config} onChange={handleChange} unit="lbs" step={10} min={1500} testId="ecu-mass" />
         <ParamRow label="Tire Mass" configKey="tireMassLb" config={config} onChange={handleChange} unit="lbs" step={1} min={8} testId="ecu-tire-mass" />
@@ -493,6 +529,9 @@ export default function EcuPage() {
         <ParamRow label="Frontal Area" configKey="frontalAreaM2" config={config} onChange={handleChange} unit="m2" step={0.05} min={1} testId="ecu-frontal-area" />
         <ParamRow label="Rolling Resist" configKey="rollingResistanceCoeff" config={config} onChange={handleChange} unit="coeff" step={0.001} min={0.005} testId="ecu-rolling-resist" />
         <ParamRow label="Drivetrain Loss" configKey="drivetrainLossPct" config={config} onChange={handleChange} unit="%" step={1} min={5} testId="ecu-dt-loss" />
+
+        <SectionHeader title="Clutch" />
+        <ParamRow label="Max Torque" configKey="clutchMaxTorqueNm" config={config} onChange={handleChange} unit="Nm" step={10} min={100} testId="ecu-clutch-torque" />
 
         <SectionHeader title="Traction Physics" />
         <ParamRow label="Tire Grip" configKey="tireGripCoeff" config={config} onChange={handleChange} unit="coeff" step={0.05} min={0.3} testId="ecu-tire-grip" />

@@ -231,19 +231,26 @@ export class EngineSound {
   ): void {
     if (!this.ctx || !this.enabled || this.fading) return;
 
+    // Guard against NaN/Infinity RPM which can freeze the AudioContext
+    if (!Number.isFinite(rpm) || rpm < 0) rpm = 800;
+    if (!Number.isFinite(throttle)) throttle = 0;
+    if (!Number.isFinite(boostPsi)) boostPsi = 0;
+    if (!Number.isFinite(tireSlipPercent)) tireSlipPercent = 0;
+
     const now = this.ctx.currentTime;
     // B16A2 is a 4-cylinder, fires twice per revolution
     // Fundamental frequency for exhaust pulses
-    const fundamentalFreq = Math.max((rpm / 60) * 2, 25);
+    // Clamp to safe range: 25Hz - 600Hz (prevents audio artifacts)
+    const fundamentalFreq = Math.min(Math.max((rpm / 60) * 2, 25), 600);
 
     // Primary exhaust tone
     if (this.osc1) this.osc1.frequency.value = fundamentalFreq;
     // Second harmonic (dominant in inline-4)
-    if (this.osc2) this.osc2.frequency.value = fundamentalFreq * 2;
+    if (this.osc2) this.osc2.frequency.value = Math.min(fundamentalFreq * 2, 1200);
     // Third harmonic (VTEC rasp)
-    if (this.osc3) this.osc3.frequency.value = fundamentalFreq * 3;
+    if (this.osc3) this.osc3.frequency.value = Math.min(fundamentalFreq * 3, 1800);
     // Sub-bass rumble
-    if (this.osc4) this.osc4.frequency.value = fundamentalFreq * 0.5;
+    if (this.osc4) this.osc4.frequency.value = Math.max(fundamentalFreq * 0.5, 20);
 
     const rpmNorm = Math.min(rpm / 8500, 1);
     // More aggressive volume curve - louder at high RPM
