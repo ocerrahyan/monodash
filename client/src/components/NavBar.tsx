@@ -4,17 +4,18 @@ import { useTheme, useThemeMode, THEME_ICONS } from "@/lib/theme";
 interface NavItem {
   href: string;
   label: string;
-  icon: string;
+  aliases?: string[];         // old routes that also highlight this tab
   accentColor?: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "GAUGES", icon: "⚡" },
-  { href: "/ecu", label: "ECU", icon: "🔧" },
-  { href: "/vehicle", label: "VEHICLE", icon: "🚗" },
-  { href: "/friends", label: "FRIENDS", icon: "👥" },
-  { href: "/export", label: "EXPORT", icon: "📦" },
-  { href: "/admin", label: "ADMIN", icon: "⚙", accentColor: "#eab308" },
+  { href: "/",        label: "RUN" },
+  { href: "/setup",   label: "SETUP",   aliases: ["/ecu", "/vehicle"] },
+  { href: "/analyze", label: "ANALYZE" },
+  { href: "/dyno",    label: "DYNO" },
+  { href: "/social",  label: "SOCIAL",  aliases: ["/friends"] },
+  { href: "/export",  label: "EXPORT" },
+  { href: "/admin",   label: "ADMIN",   accentColor: "#eab308" },
 ];
 
 export function NavBar() {
@@ -22,16 +23,22 @@ export function NavBar() {
   const t = useTheme();
   const [themeMode, cycleTheme] = useThemeMode();
 
+  const isItemActive = (item: NavItem) => {
+    if (item.href === "/") return location === "/";
+    if (location.startsWith(item.href)) return true;
+    return item.aliases?.some(a => location.startsWith(a)) ?? false;
+  };
+
   return (
     <nav
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 2,
-        padding: "0 8px",
+        gap: 0,
+        padding: "0 12px",
         background: t.navBg,
         borderBottom: `1px solid ${t.borderFaint}`,
-        minHeight: 36,
+        minHeight: 40,
         overflowX: "auto",
         overflowY: "hidden",
         WebkitOverflowScrolling: "touch",
@@ -39,34 +46,48 @@ export function NavBar() {
         flexShrink: 0,
       }}
     >
+      {/* Brand */}
+      <Link
+        href="/"
+        style={{
+          fontFamily: "'Inter', system-ui, sans-serif",
+          fontWeight: 800,
+          fontSize: 13,
+          letterSpacing: "0.12em",
+          color: t.accent,
+          textDecoration: "none",
+          marginRight: 16,
+          whiteSpace: "nowrap",
+          userSelect: "none",
+        }}
+      >
+        MONO5
+      </Link>
+
       {NAV_ITEMS.map((item) => {
-        const isActive = item.href === "/"
-          ? location === "/"
-          : location.startsWith(item.href);
+        const active = isItemActive(item);
         const activeColor = item.accentColor || t.activeText;
-        const activeBorderColor = item.accentColor || t.accent;
 
         return (
           <Link
             key={item.href}
             href={item.href}
             style={{
-              padding: "8px 10px",
+              padding: "10px 12px",
               fontSize: 10,
               fontWeight: 600,
-              letterSpacing: "0.08em",
+              letterSpacing: "0.1em",
               textTransform: "uppercase",
-              fontFamily: "inherit",
+              fontFamily: "'Inter', system-ui, sans-serif",
               textDecoration: "none",
               whiteSpace: "nowrap",
-              color: isActive ? activeColor : t.textDim,
-              borderBottom: isActive
-                ? `2px solid ${activeBorderColor}`
+              color: active ? activeColor : t.textDim,
+              borderBottom: active
+                ? `2px solid ${item.accentColor || t.accent}`
                 : "2px solid transparent",
               transition: "color 0.15s, border-color 0.15s",
             }}
           >
-            <span style={{ marginRight: 4 }}>{item.icon}</span>
             {item.label}
           </Link>
         );
@@ -77,14 +98,13 @@ export function NavBar() {
         <button
           onClick={cycleTheme}
           style={{
-            fontSize: 10,
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-            fontFamily: "inherit",
+            fontSize: 11,
+            fontFamily: "'Inter', system-ui, sans-serif",
             border: `1px solid ${t.inputBorder}`,
+            borderRadius: 4,
             background: t.inputBg,
             color: t.textMuted,
-            padding: "3px 8px",
+            padding: "4px 10px",
             cursor: "pointer",
             whiteSpace: "nowrap",
           }}

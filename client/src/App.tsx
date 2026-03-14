@@ -11,6 +11,10 @@ import AuthPage from "@/pages/auth";
 import FriendsPage from "@/pages/friends";
 import RacePage from "@/pages/race";
 import AdminPage from "@/pages/admin";
+import SetupPage from "@/pages/setup";
+import AnalyzePage from "@/pages/analyze";
+import DynoPage from "@/pages/dyno";
+import SocialPage from "@/pages/social";
 import { FloatingCommandPanel } from "@/components/FloatingCommandPanel";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { sharedSim } from "@/lib/sharedSim";
@@ -22,6 +26,10 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/setup" component={SetupPage} />
+      <Route path="/analyze" component={AnalyzePage} />
+      <Route path="/dyno" component={DynoPage} />
+      <Route path="/social" component={SocialPage} />
       <Route path="/ecu" component={EcuPage} />
       <Route path="/vehicle" component={VehiclePage} />
       <Route path="/export" component={ExportPage} />

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { FWDDrivetrainVisual } from "../components/FWDDrivetrainVisual";
 import { DynoCurveEditor } from "@/components/DynoCurveEditor";
 import { CamProfileManager } from "@/components/CamProfileManager";
+import { ENGINE_PRESETS } from "@/components/DrivetrainView3D";
 import { useAiMode } from "@/lib/aiMode";
 import { fetchAiCorrections, defaultCorrections, type AiCorrectionFactors } from "@/lib/aiPhysicsClient";
 import { log } from '@shared/logger';
@@ -2038,7 +2039,7 @@ export default function Dashboard() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="gauge-scroll-area">
         <div className="flex items-center justify-between px-3 pt-2 pb-1 gap-2">
           <div className="flex flex-col gap-0.5">
-            <span className="text-[10px] tracking-[0.3em] uppercase font-mono" style={{ color: t.textDim }}>B16A2 DOHC VTEC</span>
+            <span className="text-[10px] tracking-[0.3em] uppercase font-mono" style={{ color: t.textDim }}>{(ENGINE_PRESETS.find(p => p.id === ecuConfig.engineId)?.name || ecuConfig.engineId).toUpperCase()}</span>
             {/* Live Users Indicator - inline with title */}
             {activeCount > 0 && (
               <div className="flex items-center gap-1.5" data-testid="live-users-indicator">
