@@ -4229,6 +4229,12 @@ export const DrivetrainView3D = memo(function DrivetrainView3D(props: Drivetrain
   const engineGeometryRef = useRef<EngineGeometry>(engineGeometry);
   engineGeometryRef.current = engineGeometry;
 
+  // Key that forces DrivetrainScene to re-mount when engine geometry changes
+  const geoKey = useMemo(() => {
+    const g = engineGeometry;
+    return `${g.bore.toFixed(4)}_${g.stroke.toFixed(4)}_${g.cylinders}_${g.conRodLen.toFixed(4)}_${g.intakeValveDia.toFixed(4)}_${g.exhaustValveDia.toFixed(4)}_${g.valveStemDia.toFixed(4)}_${g.blockDeckH.toFixed(4)}_${g.tbDia.toFixed(4)}`;
+  }, [engineGeometry]);
+
   // ── Resolve transmission name from model id ──
   const resolvedTransId = props.transmissionModel || 'honda_s4c';
   const activeTransPreset = useMemo(() =>
@@ -4500,7 +4506,7 @@ export const DrivetrainView3D = memo(function DrivetrainView3D(props: Drivetrain
               >
                 <Suspense fallback={null}>
                   <CameraController presetIndex={activePreset} />
-                  <DrivetrainScene tireRpm={0} rpm={0} clutchStatus="" clutchSlipPct={0} currentGear={0} currentGearRatio={0} slipPct={0} drivetrainType="FWD" accelerationG={0} throttle={0} />
+                  <DrivetrainScene key={geoKey} tireRpm={0} rpm={0} clutchStatus="" clutchSlipPct={0} currentGear={0} currentGearRatio={0} slipPct={0} drivetrainType="FWD" accelerationG={0} throttle={0} />
                 </Suspense>
               </Canvas>
             ) : (
