@@ -11,10 +11,10 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/",        label: "RUN" },
   { href: "/setup",   label: "SETUP",   aliases: ["/ecu", "/vehicle"] },
-  { href: "/analyze", label: "ANALYZE" },
-  { href: "/dyno",    label: "DYNO" },
-  { href: "/social",  label: "SOCIAL",  aliases: ["/friends"] },
   { href: "/builder", label: "BUILD",  accentColor: "#22d3ee" },
+  { href: "/dyno",    label: "DYNO" },
+  { href: "/analyze", label: "ANALYZE" },
+  { href: "/social",  label: "SOCIAL",  aliases: ["/friends"] },
   { href: "/export",  label: "EXPORT" },
   { href: "/admin",   label: "ADMIN",   accentColor: "#eab308" },
 ];
