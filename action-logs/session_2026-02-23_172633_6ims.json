@@ -1,0 +1,17 @@
+[
+  {
+    "id": "2026-02-23_172633_6ims_1",
+    "timestamp": 1771809993617,
+    "isoTime": "2026-02-23T01:26:33.617Z",
+    "sessionId": "2026-02-23_172633_6ims",
+    "type": "session_start",
+    "event": "New session started",
+    "data": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Code/1.109.4 Chrome/142.0.7444.265 Electron/39.3.0 Safari/537.36",
+      "screenWidth": 800,
+      "screenHeight": 600,
+      "devicePixelRatio": 1.25,
+      "touchSupport": false
+    }
+  }
+]

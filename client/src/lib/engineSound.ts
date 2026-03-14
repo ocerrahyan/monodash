@@ -53,10 +53,22 @@ export class EngineSound {
     try {
       if (this.ctx) return true;
 
-      this.ctx = new AudioContext();
-      if (this.ctx.state === 'suspended') {
-        this.ctx.resume();
-      }
+      // Use webkitAudioContext fallback for older iOS Safari
+      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      this.ctx = new AC();
+
+      // iOS Safari ALWAYS starts AudioContext in 'suspended' state.
+      // resume() must be called inside a user-gesture call-stack (touchend / click).
+      // Call unconditionally — it's a no-op if already running.
+      this.ctx.resume().catch(() => {});
+
+      // Re-resume automatically if iOS suspends the context later
+      // (e.g. tab backgrounded then foregrounded).
+      this.ctx.addEventListener('statechange', () => {
+        if (this.ctx && this.ctx.state === 'suspended' && this.enabled) {
+          this.ctx.resume().catch(() => {});
+        }
+      });
 
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.value = 0;
@@ -519,8 +531,21 @@ export class EngineSound {
     }
   }
 
+  /** Resume the AudioContext (must be called from a user gesture on iOS Safari) */
+  resume(): void {
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+  }
+
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
+    if (enabled) {
+      // iOS Safari suspends the context whenever the tab backgrounds or
+      // after a period of silence.  Re-resume on every enable.
+      this.resume();
+      this.cancelFade();
+    }
     if (!enabled && this.masterGain) {
       this.masterGain.gain.value = 0;
     }

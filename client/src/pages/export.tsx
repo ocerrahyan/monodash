@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
+import { useTheme } from "@/lib/theme";
+import { NavBar } from "@/components/NavBar";
 
 export default function ExportPage() {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const t = useTheme();
 
   useEffect(() => {
     fetch("/api/export")
@@ -35,18 +38,19 @@ export default function ExportPage() {
   return (
     <div
       style={{
-        background: "#000",
-        color: "#fff",
+        background: t.bg,
+        color: t.text,
         fontFamily: "'SF Mono', 'Fira Code', 'Courier New', monospace",
         minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
       }}
     >
+      <NavBar />
       <div
         style={{
           padding: "16px",
-          borderBottom: "1px solid rgba(255,255,255,0.15)",
+          borderBottom: "1px solid " + t.border,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -58,7 +62,7 @@ export default function ExportPage() {
           <div style={{ fontSize: "14px", fontWeight: "bold", letterSpacing: "2px" }}>
             PROJECT EXPORT
           </div>
-          <div style={{ fontSize: "10px", opacity: 0.4, marginTop: "2px" }}>
+          <div style={{ fontSize: "10px", color: t.textDim, marginTop: "2px" }}>
             ENGINE MONITOR DASHBOARD - ALL SOURCE FILES
           </div>
         </div>
@@ -69,9 +73,9 @@ export default function ExportPage() {
             style={{
               fontSize: "11px",
               letterSpacing: "1px",
-              border: "1px solid rgba(255,255,255,0.3)",
+              border: "1px solid " + t.border,
               padding: "6px 16px",
-              color: "#fff",
+              color: t.text,
               textDecoration: "none",
               cursor: "pointer",
             }}
@@ -84,37 +88,22 @@ export default function ExportPage() {
             style={{
               fontSize: "11px",
               letterSpacing: "1px",
-              border: "1px solid rgba(255,255,255,0.3)",
+              border: "1px solid " + t.border,
               padding: "6px 16px",
               background: copied ? "rgba(0,255,0,0.15)" : "transparent",
-              color: "#fff",
+              color: t.text,
               cursor: "pointer",
             }}
             data-testid="button-copy-all"
           >
             {copied ? "COPIED!" : "COPY ALL TO CLIPBOARD"}
           </button>
-          <a
-            href="/"
-            style={{
-              fontSize: "11px",
-              letterSpacing: "1px",
-              border: "1px solid rgba(255,255,255,0.15)",
-              padding: "6px 16px",
-              color: "#fff",
-              textDecoration: "none",
-              opacity: 0.5,
-            }}
-            data-testid="link-back-dashboard"
-          >
-            BACK TO DASHBOARD
-          </a>
         </div>
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px" }}>
         {loading ? (
-          <div style={{ opacity: 0.5, fontSize: "12px" }}>Loading export...</div>
+          <div style={{ color: t.textDim, fontSize: "12px" }}>Loading export...</div>
         ) : (
           <pre
             style={{
@@ -123,7 +112,7 @@ export default function ExportPage() {
               whiteSpace: "pre-wrap",
               wordBreak: "break-word",
               margin: 0,
-              opacity: 0.85,
+              color: t.textMuted,
             }}
             data-testid="text-export-content"
           >

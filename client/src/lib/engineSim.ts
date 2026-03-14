@@ -64,6 +64,13 @@ export interface EcuConfig {
   finalDriveRatio: number;
   gearRevLimits: number[];
 
+  // ── Custom Shift Points ──
+  customShiftPointsEnabled: boolean;       // Enable per-gear shift points (overrides gearRevLimits for shifting)
+  customShiftPointsMode: 'rpm' | 'speed' | 'wheel_speed';  // Shift by RPM threshold, vehicle speed, or wheel speed
+  customShiftPointsRpm: number[];          // Per-gear RPM to shift at (one per gear except last)
+  customShiftPointsMph: number[];          // Per-gear vehicle speed to shift at (one per gear except last)
+  customShiftPointsWheelSpeedMph: number[]; // Per-gear wheel speed to shift at (one per gear except last)
+
   vehicleMassLb: number;
   tireDiameterIn: number;
   tireMassLb: number;
@@ -85,6 +92,7 @@ export interface EcuConfig {
   optimalSlipRatio: number;
   shiftTimeMs: number;
   clutchMaxTorqueNm: number;  // Max torque the clutch can transmit before slipping (pressure plate clamping force)
+  clutchEngagement: number;    // 0-100%: how aggressively the clutch engages. 100% = instant dump (no slip), 0% = very gradual feathering
 
   fanOnTemp: number;
   fanOffTemp: number;
@@ -98,6 +106,7 @@ export interface EcuConfig {
 
   compressionRatio: number;
 
+  vtecTargetHp: number;       // Target VTEC-only HP — auto-generates cam specs to hit this target
   vtecIntakeLiftMm: number;
   vtecExhaustLiftMm: number;
   vtecIntakeDuration: number;
@@ -135,6 +144,16 @@ export interface EcuConfig {
   rearDiffType: 'open' | 'lsd' | 'locked';
   centerDiffType: 'open' | 'viscous' | 'torsen' | 'locked';
   awdFrontBias: number;             // 0-1; front torque split for AWD (0.6 = 60% front)
+
+  // ══════════════════════════════════════════════════════════════════
+  // ENGINE SWAP SYSTEM — Engine identity, transmissions, rear differentials
+  // ══════════════════════════════════════════════════════════════════
+  engineId: string;                 // Engine preset ID (e.g. 'b16a2', '2jz-gte', 'ls3')
+  engineLayout: 'I4' | 'I6' | 'V6' | 'V8' | 'V10' | 'V12' | 'F4' | 'F6' | 'W16' | 'I3' | 'R2';
+  bankAngleDeg: number;             // V-engine bank angle (90° for V8, 60° for V6, 180° for flat)
+  transmissionModel: string;        // Transmission model (e.g. 'S4C', 'R154', 'T56', 'CD009')
+  rearDiffModel: string;            // Rear differential model (e.g. 'stock', 'ford_9in', 'dana60')
+  rearAxleWidthMm: number;          // Rear axle housing width in mm
 
   // ══════════════════════════════════════════════════════════════════
   // EXPANDED ECU PARAMETERS (Hondata / Haltech / MegaSquirt style)
@@ -234,6 +253,7 @@ export interface EcuConfig {
   frontSplitterEnabled: boolean;
   downforceCoefficientFront: number;
   downforceCoefficientRear: number;
+  bodyLiftCoefficient: number;     // Body-generated lift coefficient (positive = upward lift, reduces grip)
 
   // ── Weight Distribution ──
   ballastKg: number;               // Additional ballast weight
@@ -676,10 +696,10 @@ export function getDefaultEcuConfig(): EcuConfig {
     knockSensitivity: 5,
     knockRecoveryRate: 1,
 
-    turboEnabled: true,
+    turboEnabled: false,       // Stock B16A2 is naturally aspirated
     wastegateBaseDuty: 50,
-    boostTargetPsi: 30,
-    boostCutPsi: 35,
+    boostTargetPsi: 8,
+    boostCutPsi: 55,             // Safety fuel cut — well above any normal target
     antiLagEnabled: false,
     antiLagRetard: 20,
     boostByGearEnabled: false,
@@ -708,6 +728,13 @@ export function getDefaultEcuConfig(): EcuConfig {
     finalDriveRatio: 4.400,
     gearRevLimits: [8200, 8200, 8200, 8200, 8200],
 
+    // Custom shift points
+    customShiftPointsEnabled: false,
+    customShiftPointsMode: 'rpm' as const,
+    customShiftPointsRpm: [7800, 7800, 7800, 7800],   // Shift 1→2, 2→3, 3→4, 4→5
+    customShiftPointsMph: [25, 50, 80, 110],            // Vehicle speed thresholds
+    customShiftPointsWheelSpeedMph: [30, 55, 85, 115],  // Wheel speed thresholds
+
     // 1999-2000 Civic Si (EM1) curb weight: 2489 lbs
     vehicleMassLb: 2659,
     // 1999-2000 Civic Si: 195/55R15 tires on 15x6 alloy wheels
@@ -732,6 +759,7 @@ export function getDefaultEcuConfig(): EcuConfig {
     optimalSlipRatio: 0.10,
     shiftTimeMs: 250,
     clutchMaxTorqueNm: 200,   // Stock B16A2 clutch capacity ~200 Nm; aftermarket stage 2+: 350-600+ Nm
+    clutchEngagement: 100,     // 100% = instant hard dump (default), 0% = maximum feathered engagement
 
     fanOnTemp: 200,
     fanOffTemp: 190,
@@ -745,6 +773,7 @@ export function getDefaultEcuConfig(): EcuConfig {
 
     compressionRatio: 10.2,
 
+    vtecTargetHp: 0,             // 0 = disabled (manual cam specs), >0 = auto-generate cam specs
     vtecIntakeLiftMm: 10.6,
     vtecExhaustLiftMm: 9.4,
     vtecIntakeDuration: 240,
@@ -782,6 +811,16 @@ export function getDefaultEcuConfig(): EcuConfig {
     rearDiffType: 'open',
     centerDiffType: 'open',
     awdFrontBias: 0.6,
+
+    // ══════════════════════════════════════════════════════════════════
+    // ENGINE SWAP SYSTEM — Engine identity, transmissions, rear differentials
+    // ══════════════════════════════════════════════════════════════════
+    engineId: 'b16a2',               // Default: Honda B16A2 (EM1 Civic Si)
+    engineLayout: 'I4',              // Inline-4
+    bankAngleDeg: 0,                 // 0 for inline engines
+    transmissionModel: 'S4C',        // Honda S4C 5-speed (cable-actuated)
+    rearDiffModel: 'stock',          // Stock FWD (no separate rear diff)
+    rearAxleWidthMm: 0,              // 0 for FWD (no rear axle)
 
     // ══════════════════════════════════════════════════════════════════
     // EXPANDED ECU PARAMETERS
@@ -881,6 +920,7 @@ export function getDefaultEcuConfig(): EcuConfig {
     frontSplitterEnabled: false,
     downforceCoefficientFront: 0,
     downforceCoefficientRear: 0,
+    bodyLiftCoefficient: 0.29,       // Honda Civic EK body lift (sedan shape)
 
     // ── Weight Distribution ──
     ballastKg: 0,
@@ -1339,6 +1379,11 @@ export interface EngineState {
   quarterMileLaunched: boolean;  // True after clutch dump
   clutchIn: boolean;             // True = clutch pedal pressed (disengaged)
 
+  topSpeedMode: boolean;         // True when in top speed run mode
+  topSpeedReached: boolean;      // True when terminal velocity detected
+  topSpeedMph: number | null;    // Final top speed when reached
+  topSpeedDistanceMi: number;    // Distance in miles during top speed run
+
   currentGearDisplay: number;
   currentGearRatio: number;
   driveshaftRpm: number;
@@ -1355,6 +1400,7 @@ export interface EngineState {
   tireTemp: number;
   contactPatchArea: number;
   tireTempOptimal: boolean;
+  effectiveGripPct: number;  // Real-time computed grip as a % (100 = stock baseline)
 
   sixtyFootTime: number | null;
   threeThirtyTime: number | null;
@@ -1371,6 +1417,9 @@ export interface EngineState {
   dragForce: number;
   rollingResistance: number;
   netForce: number;
+  aeroDownforceFrontLb: number;     // Front aero downforce (or lift if negative) in lbs
+  aeroDownforceRearLb: number;      // Rear aero downforce (or lift if negative) in lbs
+  aeroLiftLb: number;               // Body lift force in lbs (reduces grip)
 
   vtecActive: boolean;
   engineLoad: number;
@@ -1593,11 +1642,21 @@ function shouldTiresBreakLoose(
   horsePower: number,
   compound: string = 'street',
   normalLoad: number = 4000,
-  tempFactor: number = 1.0
+  tempFactor: number = 1.0,
+  speedMps: number = 0
 ): { breakingLoose: boolean; slipSeverity: number; slipRatio: number; availableForce: number } {
+  // Defensive: ensure normalLoad is positive to prevent division by zero
+  const safeNormalLoad = Math.max(normalLoad, 100);
+  
   // Get peak slip and force for this compound
   const peakSlip = getPeakSlipRatio(compound);
-  const peakForce = pacejkaTireForce(peakSlip, normalLoad, compound, tempFactor);
+  const peakForce = pacejkaTireForce(peakSlip, safeNormalLoad, compound, tempFactor);
+  
+  // Speed-based decay: at highway speed, tires can't physically spin much
+  // faster than road speed — higher gears mean less torque multiplication
+  // and the wheel's rotational inertia is dominated by road speed.
+  const speedMph = speedMps * 2.237;
+  const speedDecay = clamp(1 - speedMph / 120, 0.05, 1);
   
   // If wheel force exceeds what tire can provide at peak, we're spinning
   if (wheelForceN <= peakForce) {
@@ -1608,7 +1667,7 @@ function shouldTiresBreakLoose(
     let currentSlip = peakSlip / 2;
     
     for (let i = 0; i < 10; i++) {
-      const forceAtSlip = pacejkaTireForce(currentSlip, normalLoad, compound, tempFactor);
+      const forceAtSlip = pacejkaTireForce(currentSlip, safeNormalLoad, compound, tempFactor);
       if (forceAtSlip < wheelForceN) {
         lowSlip = currentSlip;
       } else {
@@ -1620,15 +1679,16 @@ function shouldTiresBreakLoose(
     return {
       breakingLoose: false,
       slipSeverity: 0,
-      slipRatio: currentSlip,
-      availableForce: pacejkaTireForce(currentSlip, normalLoad, compound, tempFactor)
+      slipRatio: currentSlip * speedDecay,
+      availableForce: pacejkaTireForce(currentSlip, safeNormalLoad, compound, tempFactor)
     };
   }
   
   // Tire is overwhelmed - find how much slip we have
   // Force exceeds peak, so we're past optimal slip on the declining part of the curve
   const excessForce = wheelForceN - peakForce;
-  const forceRatio = wheelForceN / peakForce;
+  // Defensive check: prevent division by zero if peakForce is 0 (edge case with no load)
+  const forceRatio = peakForce > 0 ? wheelForceN / peakForce : 1;
   
   // Power factor affects how quickly slip develops
   const powerFactor = Math.min(horsePower / 200, 2.5);
@@ -1636,18 +1696,30 @@ function shouldTiresBreakLoose(
   // Calculate slip ratio based on excess force
   // More excess = higher slip, modified by power and grip
   const baseSlipIncrease = (forceRatio - 1) * 0.3;
-  const slipRatio = peakSlip + baseSlipIncrease * powerFactor;
+  // Apply speed decay — at 220 mph even with massive power, real slip is tiny
+  const rawSlip = peakSlip + baseSlipIncrease * powerFactor;
+  const slipRatio = rawSlip * speedDecay;
+  
+  // At high speed, if the decayed slip is negligible, tires aren't really breaking loose
+  if (slipRatio < peakSlip * 0.5) {
+    return {
+      breakingLoose: false,
+      slipSeverity: 0,
+      slipRatio: slipRatio,
+      availableForce: pacejkaTireForce(Math.min(slipRatio, peakSlip), normalLoad, compound, tempFactor)
+    };
+  }
   
   // Slip severity for effects (tire squeal, smoke, etc)
   const slipSeverity = (slipRatio - peakSlip) / peakSlip;
   
   // Get actual available force at this slip ratio (will be less than peak)
-  const availableForce = pacejkaTireForce(slipRatio, normalLoad, compound, tempFactor);
+  const availableForce = pacejkaTireForce(slipRatio, safeNormalLoad, compound, tempFactor);
   
   return {
     breakingLoose: true,
     slipSeverity: clamp(slipSeverity, 0, 3),
-    slipRatio: clamp(slipRatio, 0, 1.0),
+    slipRatio: clamp(slipRatio, 0, 3.0),
     availableForce
   };
 }
@@ -1699,12 +1771,41 @@ function getTireGripAtTemp(compound: TireCompoundData, temp: number, gripPct: nu
   return compound.baseGrip * userGripMult * Math.max(compound.hotGripFactor, 1 - hotPenalty);
 }
 
+// Stock reference: 195/55R15 on front axle of FWD Civic Si (~7200N load)
+// This gives a baseline patch area that patchMultiplier normalizes against.
+// Stock tires → patchMultiplier = 1.0. Wider tires get a modest bonus.
+const STOCK_CONTACT_PATCH_AREA = (() => {
+  const w = 195 / 25.4; // stock 195mm width
+  const load = 1206 * 9.81 * 0.61; // stock front axle load (2659 lb, 61% front)
+  const df = clamp(load / 8000, 0.5, 1.5);
+  const pl = 3.0 + df * 2.5;
+  return w * pl * df * 0.7; // ~25.5 sq in
+})();
+
 function getContactPatchArea(widthMm: number, aspectRatio: number, loadN: number): number {
   const sectionWidthIn = widthMm / 25.4;
   const sideWallHeight = widthMm * (aspectRatio / 100);
   const deflectionFactor = clamp(loadN / 8000, 0.5, 1.5);
   const patchLengthIn = 3.0 + deflectionFactor * 2.5;
   return sectionWidthIn * patchLengthIn * deflectionFactor * 0.7;
+}
+
+/**
+ * Contact patch grip multiplier, normalized to stock 195/55R15.
+ * Stock tires = 1.0. Wider tires get a dampened bonus:
+ *   225mm → ~1.04, 255mm → ~1.09, 315mm → ~1.15
+ * Narrower tires get a slight penalty:
+ *   165mm → ~0.96
+ * On dry pavement, tire width gives diminishing returns for grip
+ * (Coulomb friction is mostly independent of contact area).
+ */
+function getContactPatchMultiplier(widthMm: number, aspectRatio: number, loadN: number): number {
+  const area = getContactPatchArea(widthMm, aspectRatio, loadN);
+  const rawRatio = area / STOCK_CONTACT_PATCH_AREA;
+  // Dampen: only 30% of the area difference translates to grip change
+  // This matches real-world data where wider tires help modestly on dry surfaces
+  const mult = 1 + (rawRatio - 1) * 0.3;
+  return clamp(mult, 0.85, 1.20);
 }
 
 export const B16A2_TORQUE_MAP: [number, number][] = [
@@ -1714,7 +1815,152 @@ export const B16A2_TORQUE_MAP: [number, number][] = [
   [7600, 110.5], [8000, 100], [8200, 95],
 ];
 
-/** Get a fresh copy of the stock torque map for UI editing */
+// ═══════════════════════════════════════════════════════════════════════════
+// ENGINE SWAP TORQUE MAPS — Realistic torque curves for every engine preset
+// Peak torque values in lb-ft. Each map represents a WOT torque curve.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Per-engine torque maps keyed by engineId. All values are lb-ft at WOT. */
+const ENGINE_TORQUE_MAPS: Record<string, [number, number][]> = {
+  // Honda B16A2 — 160 HP @ 7600, 111 lb-ft @ 7000. VTEC high-rev NA.
+  'b16a2': B16A2_TORQUE_MAP,
+
+  // Toyota 2JZ-GTE — 320 HP @ 5600, 315 lb-ft @ 4000. Twin-turbo I6.
+  '2jz-gte': [
+    [750, 95], [1000, 120], [1500, 155], [2000, 200], [2500, 250],
+    [3000, 285], [3500, 305], [4000, 315], [4500, 310], [5000, 300],
+    [5500, 290], [5600, 285], [6000, 265], [6500, 240], [6800, 220],
+  ],
+
+  // Nissan RB26DETT — 276 HP @ 6800, 260 lb-ft @ 4400. Twin-turbo I6.
+  'rb26dett': [
+    [750, 80], [1000, 105], [1500, 135], [2000, 170], [2500, 210],
+    [3000, 238], [3500, 252], [4000, 258], [4400, 260], [5000, 255],
+    [5500, 248], [6000, 238], [6500, 225], [6800, 213], [7500, 185], [8000, 165],
+  ],
+
+  // GM LS3 6.2L — 430 HP @ 5900, 424 lb-ft @ 4600. Pushrod V8.
+  'ls3': [
+    [750, 160], [1000, 200], [1500, 255], [2000, 300], [2500, 340],
+    [3000, 375], [3500, 400], [4000, 415], [4500, 422], [4600, 424],
+    [5000, 418], [5500, 405], [5900, 383], [6200, 360], [6600, 330],
+  ],
+
+  // Subaru EJ257 — 305 HP @ 6000, 290 lb-ft @ 4000. Turbo boxer-4.
+  'ej257': [
+    [750, 85], [1000, 110], [1500, 145], [2000, 185], [2500, 230],
+    [3000, 265], [3500, 280], [4000, 290], [4500, 285], [5000, 275],
+    [5500, 268], [6000, 267], [6500, 245], [7000, 220],
+  ],
+
+  // Mitsubishi 4G63T — 276 HP @ 6500, 275 lb-ft @ 3500. Turbo I4.
+  '4g63t': [
+    [750, 80], [1000, 108], [1500, 140], [2000, 185], [2500, 235],
+    [3000, 260], [3500, 275], [4000, 272], [4500, 265], [5000, 258],
+    [5500, 250], [6000, 240], [6500, 223], [7000, 195], [7500, 170],
+  ],
+
+  // Honda K20A — 220 HP @ 8000, 152 lb-ft @ 6000. NA i-VTEC.
+  'k20a': [
+    [750, 48], [1000, 60], [1500, 72], [2000, 82], [2500, 92],
+    [3000, 100], [3500, 108], [4000, 118], [4500, 128], [5000, 138],
+    [5500, 145], [6000, 152], [6500, 150], [7000, 148], [7500, 145],
+    [8000, 144], [8300, 135], [8600, 120],
+  ],
+
+  // Mazda 13B-REW — 255 HP @ 6500, 217 lb-ft @ 5000. Twin-turbo rotary.
+  '13b-rew': [
+    [750, 60], [1000, 82], [1500, 105], [2000, 132], [2500, 160],
+    [3000, 182], [3500, 195], [4000, 205], [4500, 212], [5000, 217],
+    [5500, 215], [6000, 210], [6500, 206], [7000, 190], [7500, 170],
+    [8000, 148], [8500, 125],
+  ],
+
+  // Nissan SR20DET — 250 HP @ 6400, 217 lb-ft @ 4800. Turbo I4.
+  'sr20det': [
+    [750, 65], [1000, 85], [1500, 110], [2000, 140], [2500, 170],
+    [3000, 192], [3500, 205], [4000, 212], [4500, 216], [4800, 217],
+    [5000, 215], [5500, 208], [6000, 200], [6400, 205], [7000, 180], [7500, 155],
+  ],
+
+  // Honda F20C — 240 HP @ 8300, 153 lb-ft @ 7500. NA VTEC S2000.
+  'f20c': [
+    [750, 45], [1000, 56], [1500, 68], [2000, 78], [2500, 86],
+    [3000, 94], [3500, 102], [4000, 110], [4500, 118], [5000, 126],
+    [5500, 133], [6000, 140], [6500, 145], [7000, 150], [7500, 153],
+    [8000, 151], [8300, 152], [8600, 140], [9000, 120],
+  ],
+
+  // Nissan VR38DETT — 565 HP @ 6800, 467 lb-ft @ 3300. Twin-turbo V6.
+  'vr38dett': [
+    [750, 140], [1000, 185], [1500, 250], [2000, 330], [2500, 400],
+    [3000, 450], [3300, 467], [3500, 465], [4000, 458], [4500, 448],
+    [5000, 438], [5500, 428], [6000, 418], [6500, 430], [6800, 436],
+    [7100, 395],
+  ],
+
+  // Toyota/Subaru FA20 — 200 HP @ 7000, 151 lb-ft @ 6400. NA flat-4.
+  'fa20': [
+    [750, 48], [1000, 60], [1500, 72], [2000, 82], [2500, 92],
+    [3000, 102], [3500, 110], [4000, 118], [4500, 126], [5000, 134],
+    [5500, 142], [6000, 148], [6400, 151], [7000, 150], [7400, 135],
+  ],
+};
+
+/**
+ * Look up the torque map for a given engine. Falls back to B16A2 if not found.
+ * Returns a reference (not a copy) for performance — callers should NOT mutate.
+ */
+function getEngineTorqueMap(engineId: string): [number, number][] {
+  return ENGINE_TORQUE_MAPS[engineId] || B16A2_TORQUE_MAP;
+}
+
+/**
+ * Compute optimal shift RPM for each gear based on the power curve.
+ * For each gear, finds the RPM where power-at-wheel in the NEXT gear
+ * (at the RPM it would land at after shifting) first exceeds the power
+ * in the current gear. This is the crossover point — shifting any later
+ * wastes time on the falling side of the power curve.
+ *
+ * Works for ANY engine / gear ratio combination automatically.
+ */
+function computeOptimalShiftPoints(
+  gearRatios: number[],
+  redlineRpm: number,
+  engineId: string,
+  customMap?: [number, number][] | null,
+  compressionRatio: number = STOCK_COMPRESSION_RATIO,
+): number[] {
+  const shiftPoints: number[] = [];
+  for (let g = 0; g < gearRatios.length - 1; g++) {
+    const ratioDrop = gearRatios[g + 1] / gearRatios[g]; // e.g. 2.105/3.230 = 0.652
+    let bestShiftRpm = redlineRpm; // fallback: shift at redline
+    // Scan from peak-torque region upward in 50 RPM steps.
+    // Find the RPM where staying in current gear produces less power
+    // than shifting to the next gear would (at the landed RPM).
+    for (let rpm = 3000; rpm <= redlineRpm; rpm += 50) {
+      const currentPower = getEngineTorque(rpm, 1.0, compressionRatio, customMap, engineId) * rpm;
+      const nextGearRpm = rpm * ratioDrop;
+      const nextPower = getEngineTorque(nextGearRpm, 1.0, compressionRatio, customMap, engineId) * nextGearRpm;
+      // Once power in current gear < power in next gear, we've passed the crossover
+      if (currentPower < nextPower && rpm > 4000) {
+        bestShiftRpm = rpm;
+        break;
+      }
+    }
+    // Clamp: never shift below 5000 or above redline
+    shiftPoints.push(clamp(bestShiftRpm, 5000, redlineRpm));
+  }
+  return shiftPoints;
+}
+
+/** Get the stock torque map for the CURRENT engine by ID (for dyno editor baseline) */
+export function getStockTorqueMapForEngine(engineId: string): [number, number][] {
+  const map = getEngineTorqueMap(engineId);
+  return map.map(([r, t]) => [r, t]);
+}
+
+/** Get a fresh copy of the stock B16A2 torque map for UI editing (legacy compat) */
 export function getStockTorqueMap(): [number, number][] {
   return B16A2_TORQUE_MAP.map(([r, t]) => [r, t]);
 }
@@ -1722,23 +1968,80 @@ export function getStockTorqueMap(): [number, number][] {
 // Stock B16A2 compression ratio for baseline
 const STOCK_COMPRESSION_RATIO = 10.2;
 
-function getB16Torque(rpm: number, throttlePos: number, compressionRatio: number = STOCK_COMPRESSION_RATIO, customMap?: [number, number][] | null): number {
-  const tMap = customMap || B16A2_TORQUE_MAP;
-  const clamped = clamp(rpm, tMap[0][0], tMap[tMap.length - 1][0]);
+// Per-engine stock compression ratios for proper baseline comparison
+const ENGINE_STOCK_COMPRESSION: Record<string, number> = {
+  'b16a2': 10.2, '2jz-gte': 8.5, 'rb26dett': 8.5, 'ls3': 10.7,
+  'ej257': 8.2, '4g63t': 8.8, 'k20a': 11.5, '13b-rew': 9.0,
+  'sr20det': 8.5, 'f20c': 11.7, 'vr38dett': 9.0, 'fa20': 12.5,
+};
+
+/** Stock cylinder count per engine — used to scale torque when user changes numCylinders */
+const ENGINE_STOCK_CYLINDERS: Record<string, number> = {
+  'b16a2': 4, '2jz-gte': 6, 'rb26dett': 6, 'ls3': 8,
+  'ej257': 4, '4g63t': 4, 'k20a': 4, '13b-rew': 2,
+  'sr20det': 4, 'f20c': 4, 'vr38dett': 6, 'fa20': 4,
+};
+
+/**
+ * Get engine torque at a given RPM, throttle position, and compression ratio.
+ * Supports engine swaps via engineId — uses the correct torque map per engine.
+ * If a customMap is provided (user dyno editor), that takes priority.
+ * Compression ratio multiplier is relative to the STOCK compression of the swapped engine.
+ */
+function getEngineTorque(rpm: number, throttlePos: number, compressionRatio: number = STOCK_COMPRESSION_RATIO, customMap?: [number, number][] | null, engineId: string = 'b16a2'): number {
+  // Priority: user custom map > engine-specific map > B16A2 fallback
+  const tMap = customMap || getEngineTorqueMap(engineId);
+  const stockCR = ENGINE_STOCK_COMPRESSION[engineId] || STOCK_COMPRESSION_RATIO;
+  
+  // Below map minimum: clamp to first point
+  if (rpm <= tMap[0][0]) {
+    const baseTorque = tMap[0][1] * (0.1 + 0.9 * throttlePos);
+    return baseTorque * getCompressionMultiplierRelative(compressionRatio, stockCR);
+  }
+  
+  // Above map maximum: extrapolate with natural falloff
+  // Engines lose torque above their designed RPM range due to valve float,
+  // breathing losses, friction, etc. — approximately 16% per 1000 RPM.
+  if (rpm >= tMap[tMap.length - 1][0]) {
+    const lastRpm = tMap[tMap.length - 1][0];
+    const lastTorque = tMap[tMap.length - 1][1];
+    const overRpmRatio = (rpm - lastRpm) / 1000;
+    const falloff = Math.max(0.15, 1 - overRpmRatio * 0.16);
+    const baseTorque = lastTorque * falloff * (0.1 + 0.9 * throttlePos);
+    return baseTorque * getCompressionMultiplierRelative(compressionRatio, stockCR);
+  }
+  
+  // Within map range: interpolate normally
   let i = 0;
-  while (i < tMap.length - 1 && tMap[i + 1][0] <= clamped) i++;
+  while (i < tMap.length - 1 && tMap[i + 1][0] <= rpm) i++;
   if (i >= tMap.length - 1) {
-    const baseTorque = tMap[tMap.length - 1][1] * throttlePos;
-    return baseTorque * getCompressionMultiplier(compressionRatio);
+    const baseTorque = tMap[tMap.length - 1][1] * (0.1 + 0.9 * throttlePos);
+    return baseTorque * getCompressionMultiplierRelative(compressionRatio, stockCR);
   }
   const [r0, t0] = tMap[i];
   const [r1, t1] = tMap[i + 1];
-  const frac = (clamped - r0) / (r1 - r0);
+  const frac = (rpm - r0) / (r1 - r0);
   const wotTorque = t0 + (t1 - t0) * frac;
   const baseTorque = wotTorque * (0.1 + 0.9 * throttlePos);
   
-  // Apply compression ratio effect
-  return baseTorque * getCompressionMultiplier(compressionRatio);
+  return baseTorque * getCompressionMultiplierRelative(compressionRatio, stockCR);
+}
+
+/**
+ * Get cylinder count scaling multiplier.
+ * The torque map represents the engine at its stock cylinder count.
+ * Adding or removing cylinders scales torque proportionally.
+ * e.g. B16A2 has 4 cylinders → 6 cylinders = 1.5x torque
+ */
+export function getCylinderScaling(numCylinders: number, engineId: string): number {
+  const stockCyls = ENGINE_STOCK_CYLINDERS[engineId] || 4;
+  if (numCylinders === stockCyls || numCylinders <= 0) return 1.0;
+  return numCylinders / stockCyls;
+}
+
+/** Legacy compatibility wrapper — calls getEngineTorque with B16A2 defaults */
+function getB16Torque(rpm: number, throttlePos: number, compressionRatio: number = STOCK_COMPRESSION_RATIO, customMap?: [number, number][] | null): number {
+  return getEngineTorque(rpm, throttlePos, compressionRatio, customMap, 'b16a2');
 }
 
 /**
@@ -1789,6 +2092,30 @@ function getCompressionMultiplier(compressionRatio: number): number {
   return Math.max(multiplier, 0.60);
 }
 
+/**
+ * Compression multiplier relative to a specific engine's stock compression ratio.
+ * This way, an LS3 at its stock 10.7:1 = 1.0x, not 1.02x like it would be if
+ * compared to the B16A2's 10.2:1 baseline.
+ */
+function getCompressionMultiplierRelative(compressionRatio: number, stockCR: number): number {
+  const cr = Math.max(compressionRatio, 6.0);
+  const gamma = 1.3;
+  const stockEfficiency = 1 - Math.pow(1 / stockCR, gamma - 1);
+  const newEfficiency = 1 - Math.pow(1 / cr, gamma - 1);
+  let multiplier = newEfficiency / stockEfficiency;
+  if (cr > 14) {
+    const excess = cr - 14;
+    const baseAt14 = (1 - Math.pow(1 / 14, gamma - 1)) / stockEfficiency;
+    const additionalGain = Math.log(1 + excess * 0.15) * 0.25;
+    multiplier = baseAt14 + additionalGain;
+  }
+  if (cr < 8.0) {
+    const deficit = 8.0 - cr;
+    multiplier *= 1 - (deficit * 0.05);
+  }
+  return Math.max(multiplier, 0.60);
+}
+
 function getCamTorqueMultiplier(rpm: number, vtecActive: boolean, config: EcuConfig): number {
   const STOCK_LOW_INTAKE_LIFT = 7.6;
   const STOCK_LOW_EXHAUST_LIFT = 7.0;
@@ -1826,6 +2153,107 @@ function getCamTorqueMultiplier(rpm: number, vtecActive: boolean, config: EcuCon
     }
     return multiplier;
   }
+}
+
+/**
+ * Generate VTEC cam specifications to add a target HP on top of low-cam power.
+ * 
+ * vtecHpAdder is the ADDITIONAL horsepower gained when VTEC engages.
+ * Low cam specs stay at stock values; only VTEC cam lift/duration are computed
+ * so that (vtecCamMultiplier - lowCamMultiplier) × baseTorque × rpm / 5252
+ * equals the requested HP adder at the peak-power RPM.
+ * 
+ * Returns { vtecIntakeLiftMm, vtecExhaustLiftMm, vtecIntakeDuration, vtecExhaustDuration }
+ */
+export function generateCamSpecsFromHp(
+  vtecHpAdder: number,
+  engineId: string = 'b16a2',
+  numCylinders: number = 4,
+  compressionRatio: number = 10.2,
+): {
+  vtecIntakeLiftMm: number; vtecExhaustLiftMm: number;
+  vtecIntakeDuration: number; vtecExhaustDuration: number;
+} {
+  // Stock baselines
+  const STOCK_VTEC_INTAKE_LIFT = 10.6;
+  const STOCK_VTEC_EXHAUST_LIFT = 9.4;
+  const STOCK_VTEC_INTAKE_DURATION = 240;
+  const STOCK_VTEC_EXHAUST_DURATION = 228;
+  const STOCK_LOW_INTAKE_LIFT = 7.6;
+  const STOCK_LOW_EXHAUST_LIFT = 7.0;
+  const STOCK_LOW_INTAKE_DURATION = 210;
+  const STOCK_LOW_EXHAUST_DURATION = 200;
+
+  // Compute the stock low-cam multiplier (what the engine makes without VTEC)
+  const lowIntakeLiftRatio = clamp(STOCK_LOW_INTAKE_LIFT / STOCK_LOW_INTAKE_LIFT, 0.7, 1.4); // 1.0
+  const lowExhaustLiftRatio = clamp(STOCK_LOW_EXHAUST_LIFT / STOCK_LOW_EXHAUST_LIFT, 0.7, 1.4); // 1.0
+  const lowAvgLiftRatio = (lowIntakeLiftRatio + lowExhaustLiftRatio) / 2;
+  const lowIntakeDurRatio = clamp(STOCK_LOW_INTAKE_DURATION / STOCK_LOW_INTAKE_DURATION, 0.8, 1.3);
+  const lowExhaustDurRatio = clamp(STOCK_LOW_EXHAUST_DURATION / STOCK_LOW_EXHAUST_DURATION, 0.8, 1.3);
+  const lowAvgDurRatio = (lowIntakeDurRatio + lowExhaustDurRatio) / 2;
+  const lowCamMult = lowAvgLiftRatio * 0.6 + lowAvgDurRatio * 0.4; // ≈ 1.0 for stock
+
+  // Find peak power point from the engine's torque map
+  const tMap = getEngineTorqueMap(engineId);
+  const cylScale = getCylinderScaling(numCylinders, engineId);
+  const stockCR = ENGINE_STOCK_COMPRESSION[engineId] || 10.2;
+  const crMult = getCompressionMultiplierRelative(compressionRatio, stockCR);
+  
+  let bestRpm = 7000;
+  let bestHp = 0;
+  for (const [rpm, torque] of tMap) {
+    const hp = (torque * crMult * cylScale * rpm) / 5252;
+    if (hp > bestHp) {
+      bestHp = hp;
+      bestRpm = rpm;
+    }
+  }
+  
+  // Base torque at peak power RPM (from map, with CR and cylinder scaling)
+  const baseTorqueAtPeak = interpolateTorqueMap(tMap, bestRpm) * crMult * cylScale;
+  
+  // Low-cam HP at peak RPM
+  const lowCamHp = (baseTorqueAtPeak * lowCamMult * bestRpm) / 5252;
+  
+  // Total HP the VTEC cam must produce = low-cam HP + the adder
+  const totalVtecHp = lowCamHp + vtecHpAdder;
+  
+  // Required VTEC cam multiplier: totalVtecHp = baseTorque × vtecCamMult × rpm / 5252
+  const requiredVtecCamMult = (totalVtecHp * 5252) / (baseTorqueAtPeak * bestRpm);
+  
+  // Clamp to realistic range (0.8 to 1.8 — mild to full race cam)
+  const clampedMult = Math.max(0.8, Math.min(1.8, requiredVtecCamMult));
+  
+  // The cam multiplier formula is: mult = avgLiftRatio * 0.6 + avgDurationRatio * 0.4
+  // We distribute the required gain between lift (60% weight) and duration (40% weight)
+  const totalGain = clampedMult - 1.0;
+  const liftGainFactor = 1.0 + totalGain * 1.1;   // lift scales more aggressively
+  const durationGainFactor = 1.0 + totalGain * 0.85; // duration scales more gradually
+  
+  // VTEC cam specs
+  const vtecIntakeLift = Math.round(clamp(STOCK_VTEC_INTAKE_LIFT * liftGainFactor, 7.0, 15.0) * 10) / 10;
+  const vtecExhaustLift = Math.round(clamp(STOCK_VTEC_EXHAUST_LIFT * liftGainFactor, 6.0, 14.0) * 10) / 10;
+  const vtecIntakeDur = Math.round(clamp(STOCK_VTEC_INTAKE_DURATION * durationGainFactor, 220, 320) / 2) * 2;
+  const vtecExhaustDur = Math.round(clamp(STOCK_VTEC_EXHAUST_DURATION * durationGainFactor, 210, 300) / 2) * 2;
+  
+  return {
+    vtecIntakeLiftMm: vtecIntakeLift,
+    vtecExhaustLiftMm: vtecExhaustLift,
+    vtecIntakeDuration: vtecIntakeDur,
+    vtecExhaustDuration: vtecExhaustDur,
+  };
+}
+
+/** Helper: interpolate torque from a map at any RPM */
+function interpolateTorqueMap(map: [number, number][], rpm: number): number {
+  if (rpm <= map[0][0]) return map[0][1];
+  if (rpm >= map[map.length - 1][0]) return map[map.length - 1][1];
+  let i = 0;
+  while (i < map.length - 1 && map[i + 1][0] <= rpm) i++;
+  if (i >= map.length - 1) return map[map.length - 1][1];
+  const [r0, t0] = map[i];
+  const [r1, t1] = map[i + 1];
+  return t0 + (t1 - t0) * (rpm - r0) / (r1 - r0);
 }
 
 function getGear(speedMph: number): number {
@@ -1885,18 +2313,42 @@ function getFuelMultipliers(config: EcuConfig): { powerMult: number; octaneBonus
 
 // ── Intake Air Temperature model ──
 function getIATCorrection(ambientTempF: number, boostPsi: number, intercoolerEnabled: boolean, intercoolerEff: number): { iatF: number; densityCorrection: number } {
-  // Boost heats the charge air significantly
-  const compressorHeatF = boostPsi * 12; // ~12°F per psi of boost
+  const refTempF = 77;
+
+  // Compressor heat rise (~10°F per psi average across typical boost range)
+  const compressorHeatF = boostPsi > 0 ? boostPsi * 10 : 0;
   let chargeTemp = ambientTempF + compressorHeatF;
   if (intercoolerEnabled && boostPsi > 0) {
     // Intercooler removes a percentage of the heat added by compression
     const heatRemoved = compressorHeatF * (intercoolerEff / 100);
     chargeTemp -= heatRemoved;
   }
-  // Density correction: colder air = denser = more power
-  // Reference: 77°F (25°C). Every 10°F colder ≈ +1.7% density
-  const refTempF = 77;
-  const densityCorrection = (refTempF + 459.67) / (chargeTemp + 459.67); // Rankine ratio
+
+  if (boostPsi > 0) {
+    // For boosted engines the boost multiplier (1 + psi/14.7 × 0.9) already
+    // models the net torque increase from forced induction.  Applying a full
+    // Rankine density correction on top of that double-penalises the output.
+    //
+    // Instead we only correct for:
+    //   1. Ambient temperature deviation from the 77°F reference.
+    //   2. A realistic no-intercooler penalty: compressed charge air is hotter
+    //      and less dense, costing ~3 % at 10 PSI up to ~20 % at 90 PSI.
+    //      An intercooler reduces this penalty proportional to its efficiency.
+    let densityCorrection = (refTempF + 459.67) / (ambientTempF + 459.67);
+
+    const heatPenalty = 1 - 1 / (1 + compressorHeatF * 0.0003);
+    if (intercoolerEnabled) {
+      densityCorrection *= 1 - heatPenalty * (1 - intercoolerEff / 100);
+    } else {
+      densityCorrection *= 1 - heatPenalty;
+    }
+
+    return { iatF: chargeTemp, densityCorrection };
+  }
+
+  // NA engines: full charge-temp-based density correction
+  // colder air = denser = more power, hotter air = less dense
+  const densityCorrection = (refTempF + 459.67) / (chargeTemp + 459.67);
   return { iatF: chargeTemp, densityCorrection };
 }
 
@@ -1943,6 +2395,69 @@ function computeDerived(config: EcuConfig): DerivedConstants {
   };
 }
 
+// ══════════════════════════════════════════════════════════════════
+// DYNO MODE TYPES
+// ══════════════════════════════════════════════════════════════════
+
+export interface DynoDataPoint {
+  rpm: number;
+  torqueNm: number;
+  torqueFtLb: number;
+  hp: number;
+  boostPsi: number;
+  afrActual: number;
+  egtF: number;
+  iatF: number;
+  timingDeg: number;
+  vePct: number;
+  injDutyPct: number;
+  oilTempF: number;
+  coolantTempF: number;
+  throttlePct: number;
+  timestamp: number;
+}
+
+export interface DynoRun {
+  id: string;
+  name: string;
+  timestamp: number;
+  startRpm: number;
+  endRpm: number;
+  peakHp: number;
+  peakHpRpm: number;
+  peakTorqueNm: number;
+  peakTorqueFtLb: number;
+  peakTorqueRpm: number;
+  points: DynoDataPoint[];
+  programType: DynoProgramType;
+  correctionFactor: number;
+}
+
+export type DynoProgramType = 'wot_sweep' | 'steady_state' | 'step_test' | 'part_throttle' | 'manual';
+
+export interface DynoPullConfig {
+  programType: DynoProgramType;
+  startRpm: number;
+  endRpm: number;
+  sweepRateRpmPerSec: number;
+  throttlePct: number;
+  holdRpm?: number;
+  stepSizeRpm?: number;
+  stepHoldTimeSec?: number;
+  saeCorrectionEnabled: boolean;
+}
+
+export function getDefaultDynoPullConfig(): DynoPullConfig {
+  return {
+    programType: 'wot_sweep',
+    startRpm: 2500,
+    endRpm: 8200,
+    sweepRateRpmPerSec: 300,
+    throttlePct: 100,
+    saeCorrectionEnabled: true,
+  };
+}
+
 export function createEngineSimulation(ecuConfig?: EcuConfig) {
   let config: EcuConfig = ecuConfig ? { ...ecuConfig } : getDefaultEcuConfig();
   let derived = computeDerived(config);
@@ -1965,12 +2480,20 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
   let qmActive = false;
   let qmLaunched = false;  // True after clutch is dumped
   let clutchIn = true;     // True = clutch pedal pressed (disengaged from wheels)
+  let topSpeedMode = false;       // Unlimited road space mode
+  let topSpeedReached = false;    // Terminal velocity detected
+  let topSpeedMph: number | null = null;  // Final measured top speed
+  let topSpeedSamples: number[] = [];     // Speed samples for terminal velocity detection
   let prevSpeedMps = 0;
   let currentGear = 0;
   let shiftTimer = 0;
   let wheelSpeedMps = 0;
+  let highRpmDwellTime = 0;  // Tracks how long RPM has been above 8000 in current gear
+  let cachedOptimalShiftPoints: number[] = computeOptimalShiftPoints(
+    config.gearRatios, config.redlineRpm, config.engineId, customTorqueMap, config.compressionRatio
+  );
 
-  let tireTemp = 100;  // Start tires warmer (ambient + some heat from driving to staging)
+  let tireTemp = 115;  // Start tires warmer (ambient + staging/burnout heat) — adjusted per-run below
   let sixtyFootTime: number | null = null;
   let threeThirtyTime: number | null = null;
   let eighthMileTime: number | null = null;
@@ -1984,6 +2507,43 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
   let peakSlipPercent = 0;
   let knockCount = 0;
   let catalystTemp = 400;
+
+  // ── Dyno mode state ──
+  let dynoMode = false;
+  let dynoPullActive = false;
+  let dynoPullConfig: DynoPullConfig = getDefaultDynoPullConfig();
+  let dynoPullProgress = 0;   // 0-1 progress through sweep
+  let dynoRpmTarget = 0;      // Current RPM target for absorber
+  let dynoPullElapsed = 0;    // Seconds elapsed in current pull
+  let dynoCurrentRun: DynoDataPoint[] = [];
+  let dynoRunHistory: DynoRun[] = [];
+  let dynoSampleTimer = 0;
+  let dynoStepIndex = 0;      // For step test
+  let dynoStepHoldTimer = 0;  // For step test hold duration
+  // Dyno absorber: models inertia drum / eddy-current brake
+  const DYNO_INERTIA_KGM2 = 0.5; // Virtual drum inertia (like a smallish chassis dyno roller)
+  const DYNO_ABSORBER_GAIN = 50;  // How aggressively absorber brakes to hold RPM (Nm per rad/s error)
+  let dynoAbsorberTorqueNm = 0;   // Current absorber braking torque
+
+  // ── Per-frame telemetry capture for diagnostics ──
+  let runTelemetry: Record<string, unknown>[] = [];
+  let _lastEngineTorqueNm = 0;
+  let _lastTransmittedTorqueNm = 0;
+  let _lastRawWheelForceN = 0;
+
+  // ── Clutch slip model state ──
+  // When the clutch is dumped, it doesn't instantly lock — the clutch disc
+  // slips against the flywheel, transferring torque limited by clamping force.
+  // Engine RPM and wheel-driven RPM converge over time as the clutch heats
+  // and grabs harder.
+  let clutchSlipping = false;       // True during clutch slip after launch
+  let clutchFullyEngaged = false;   // Once true, never re-enter slip phase this run
+  let clutchLockupTimer = 0;        // Time since clutch dump (for progressive lockup)
+  // Engine rotational inertia = crank + clutch disc (fixed ~0.04 kgm²) + flywheel (from config mass).
+  // OEM B16 single-mass flywheel: 14 lb = 0.08 kgm², total ≈ 0.12 kgm².
+  // Lightweight aluminum: 7 lb = 0.04 kgm², total ≈ 0.08 kgm² (revs faster, less stored energy at launch).
+  const flywheelInertia = (config.flywheelMassLb * 0.4536) * 0.005; // rough kgm² from mass
+  const ENGINE_INERTIA_KGM2 = 0.04 + flywheelInertia; // crank+clutch disc + flywheel
 
   let vtecActive = false;
   let fanOn = false;
@@ -1999,6 +2559,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
 
   function startQuarterMile() {
     log.info('engineSim', 'Quarter mile started — staging');
+    runTelemetry = [];  // Clear previous run telemetry
     speedMps = 0;
     distanceFt = 0;
     qmElapsedTime = 0;
@@ -2010,8 +2571,22 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     currentGear = 0;
     shiftTimer = 0;
     wheelSpeedMps = 0;
+    // CRITICAL: Reset throttle to idle for staging, otherwise repeat runs
+    // carry over throttle=1.0 from previous launch and the staging code
+    // free-revs the engine to redline before the driver even dumps the clutch.
+    throttle = 0;
+    prevThrottle = 0;
+    targetRpm = config.targetIdleRpm;
+    currentRpm = config.targetIdleRpm;
 
-    tireTemp = 100;  // Tires warmed up from staging/burnout
+    clutchSlipping = false;
+    clutchFullyEngaged = false;
+    clutchLockupTimer = 0;
+    // Tire starting temp: ambient base + pavement heat soak + burnout warmup
+    // On a 95°F day with ~148°F pavement, tires start around 140°F
+    // On a 77°F day with ~103°F pavement, tires start around 115°F
+    const _surfTemp1 = config.ambientTempF + clamp((config.ambientTempF - 60) * 1.5, 0, 70);
+    tireTemp = Math.max(config.ambientTempF + 20, _surfTemp1 * 0.8 + 20);
     sixtyFootTime = null;
     threeThirtyTime = null;
     eighthMileTime = null;
@@ -2029,13 +2604,36 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
   // Dump the clutch to launch!
   function launchCar() {
     if (qmActive && !qmLaunched) {
+      // ── Auto-floor throttle ──────────────────────────────────
+      // In a real drag launch, the driver floors it AS they dump the clutch.
+      // Without this, the user would need to separately manage a throttle
+      // slider on a phone screen — unrealistic and results in idle-bog launches.
+      throttle = 1.0;
+      targetRpm = config.redlineRpm;
+
+      // ── Pre-launch rev buildup ──────────────────────────────
+      // Simulate the driver revving the engine before dumping the clutch.
+      // In reality, you hold the brake, build RPM, then dump.
+      // Default launch RPM: launch control RPM if enabled, otherwise ~60% of redline.
+      const launchRpm = config.launchControlEnabled
+        ? config.launchControlRpm
+        : Math.min(config.redlineRpm * 0.6, 5500);
+      // UNCONDITIONALLY set launch RPM — don't let stale high RPM carry over.
+      // In real life, the driver holds brake + revs to a specific RPM.
+      currentRpm = launchRpm;
+
       qmLaunched = true;
-      clutchIn = false;  // Release clutch pedal - engage transmission
-      log.info('engineSim', 'Launch! Clutch dumped', { rpm: currentRpm, gear: currentGear + 1 });
+      clutchIn = false;       // Release clutch pedal
+      clutchSlipping = true;  // Clutch disc slips against flywheel initially
+      clutchFullyEngaged = false; // Reset — clutch hasn't locked up yet
+      clutchLockupTimer = 0;  // Start lockup timer
+      log.info('engineSim', 'Launch! Clutch dumped', { rpm: currentRpm, gear: currentGear + 1, boostPsi: boostPsi.toFixed(1), throttle: '100%' });
+    } else {
     }
   }
 
   function resetQuarterMile() {
+    // runTelemetry is NOT cleared here — dashboard grabs it before reset
     speedMps = 0;
     distanceFt = 0;
     qmElapsedTime = 0;
@@ -2051,7 +2649,11 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     shiftTimer = 0;
     wheelSpeedMps = 0;
 
-    tireTemp = 100;  // Reset to warmed staging temp
+    clutchSlipping = false;
+    clutchFullyEngaged = false;
+    clutchLockupTimer = 0;
+    const _surfTemp2 = config.ambientTempF + clamp((config.ambientTempF - 60) * 1.5, 0, 70);
+    tireTemp = Math.max(config.ambientTempF + 20, _surfTemp2 * 0.8 + 20);
     sixtyFootTime = null;
     threeThirtyTime = null;
     eighthMileTime = null;
@@ -2064,12 +2666,60 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     peakSpeedMph = 0;
     peakSlipPercent = 0;
     knockCount = 0;
+    topSpeedMode = false;
+    topSpeedReached = false;
+    topSpeedMph = null;
+    topSpeedSamples = [];
+  }
+
+  function startTopSpeedRun() {
+    log.info('engineSim', 'Top speed run started — staging');
+    speedMps = 0;
+    distanceFt = 0;
+    qmElapsedTime = 0;
+    qmET = null;
+    qmActive = true;
+    qmLaunched = false;
+    clutchIn = true;
+    prevSpeedMps = 0;
+    currentGear = 0;
+    shiftTimer = 0;
+    wheelSpeedMps = 0;
+    const _surfTemp3 = config.ambientTempF + clamp((config.ambientTempF - 60) * 1.5, 0, 70);
+    tireTemp = Math.max(config.ambientTempF + 20, _surfTemp3 * 0.8 + 20);
+    sixtyFootTime = null;
+    threeThirtyTime = null;
+    eighthMileTime = null;
+    thousandFootTime = null;
+    trapSpeed = null;
+    peakAccelG = 0;
+    peakWheelHp = 0;
+    peakRpm = 0;
+    peakBoostPsi = 0;
+    peakSpeedMph = 0;
+    peakSlipPercent = 0;
+    knockCount = 0;
+    topSpeedMode = true;
+    topSpeedReached = false;
+    topSpeedMph = null;
+    topSpeedSamples = [];
+  }
+
+  function resetTopSpeedRun() {
+    topSpeedMode = false;
+    topSpeedReached = false;
+    topSpeedMph = null;
+    topSpeedSamples = [];
+    resetQuarterMile();
   }
 
   function setEcuConfig(newConfig: EcuConfig) {
     config = { ...newConfig };
     config.tireDiameterIn = (config.tireWidthMm * (config.tireAspectRatio / 100) * 2 / 25.4) + config.tireWheelDiameterIn;
     derived = computeDerived(config);
+    cachedOptimalShiftPoints = computeOptimalShiftPoints(
+      config.gearRatios, config.redlineRpm, config.engineId, customTorqueMap, config.compressionRatio
+    );
   }
 
   function getEcuConfig(): EcuConfig {
@@ -2111,9 +2761,244 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     const iatData = getIATCorrection(config.ambientTempF, boostPsi, config.intercoolerEnabled, config.intercoolerEfficiencyPct);
     // Combined intake charge correction: denser air + fuel octane/type bonus
     const chargePowerMult = iatData.densityCorrection * fuelMults.powerMult;
+
+    // ══════════════════════════════════════════════════════════════════
+    // DYNO MODE — engine runs on virtual dyno, no vehicle dynamics
+    // ══════════════════════════════════════════════════════════════════
+    if (dynoMode) {
+      // VTEC engagement
+      if (vtecActive) {
+        if (currentRpm < config.vtecDisengageRpm) vtecActive = false;
+      } else {
+        if (currentRpm >= config.vtecEngageRpm) vtecActive = true;
+      }
+
+      // Fan control
+      if (coolantTemp + config.coolantSensorOffset >= config.fanOnTemp) fanOn = true;
+      else if (coolantTemp + config.coolantSensorOffset <= config.fanOffTemp) fanOn = false;
+
+      // Boost model (simplified version of the main loop's turbo logic)
+      if (config.turboEnabled) {
+        const rpmFactor = clamp((currentRpm - 2000) / 4000, 0, 1);
+        const boostTarget = config.boostTargetPsi;
+        const effectiveTarget = Math.min(boostTarget, (config.boostCutPsi || boostTarget + 4) - 2);
+        const rawTarget = effectiveTarget * rpmFactor * throttle;
+        const turboLag = rawTarget > 20 ? 1.5 : rawTarget > 10 ? 2.5 : 3.5;
+        boostPsi = lerp(boostPsi, rawTarget, dt * turboLag);
+        if (boostPsi < 0.1) boostPsi = 0;
+      } else if (config.superchargerEnabled) {
+        boostPsi = config.superchargerMaxBoostPsi * clamp(currentRpm / redline, 0, 1) * throttle;
+      } else {
+        boostPsi = 0;
+      }
+
+      // Engine torque calculation
+      let torqueFtLb = getEngineTorque(currentRpm, throttle, config.compressionRatio, customTorqueMap, config.engineId);
+
+      // Boost multiplier
+      const boostMult = boostPsi > 0 ? 1 + (boostPsi / 14.7) * 0.9 : 1;
+      torqueFtLb *= boostMult * chargePowerMult;
+
+      // Nitrous
+      let nitrousActiveNow = false;
+      if (config.nitrousEnabled && currentRpm >= config.nitrousActivationRpm && throttle >= 0.95) {
+        const nitrousTorqueAdd = (config.nitrousHpAdder * 5252) / Math.max(currentRpm, 1000);
+        torqueFtLb += nitrousTorqueAdd;
+        nitrousActiveNow = true;
+      }
+
+      // Supercharger parasitic loss
+      let scParasiticLoss = 0;
+      if (config.superchargerEnabled) {
+        scParasiticLoss = boostPsi * 2.5;
+        torqueFtLb -= scParasiticLoss;
+      }
+
+      // Rev limiter
+      let fuelCutActive = false;
+      let revLimitActive = false;
+      if (currentRpm >= fuelCutRpm) {
+        torqueFtLb = 0;
+        fuelCutActive = true;
+        revLimitActive = true;
+      } else if (currentRpm >= softCutRpm) {
+        torqueFtLb *= 0.5;
+        fuelCutActive = true;
+      }
+
+      const torqueNm = torqueFtLb * 1.3558;
+      const engineHp = torqueFtLb * currentRpm / 5252;
+
+      // Dyno absorber physics: engine torque vs absorber load
+      // Net torque on the engine+dyno system determines RPM change
+      if (dynoPullActive) {
+        // During a pull, absorber targets the sweep RPM
+        const rpmError = currentRpm - dynoRpmTarget;
+        dynoAbsorberTorqueNm = clamp(rpmError * DYNO_ABSORBER_GAIN, 0, torqueNm * 2);
+        const netTorque = torqueNm - dynoAbsorberTorqueNm;
+        const totalInertia = ENGINE_INERTIA_KGM2 + DYNO_INERTIA_KGM2;
+        const angularAccel = netTorque / totalInertia;
+        currentRpm += angularAccel * (30 / Math.PI) * dt;
+        updateDynoPull(dt, torqueNm, engineHp);
+      } else {
+        // Free rev / idle: engine spins against its own inertia + light friction
+        const frictionTorque = 5 + currentRpm * 0.003; // Engine internal friction (Nm)
+        const netTorque = torqueNm - frictionTorque;
+        const angularAccel = netTorque / ENGINE_INERTIA_KGM2;
+        currentRpm += angularAccel * (30 / Math.PI) * dt;
+      }
+
+      // Clamp RPM
+      currentRpm = clamp(currentRpm, idleRpm * 0.5, fuelCutRpm + 200);
+      if (throttle < 0.02 && currentRpm > idleRpm) {
+        currentRpm = lerp(currentRpm, idleRpm, dt * 3);
+      }
+
+      // Crank angle
+      crankAngle = (crankAngle + currentRpm * 6 * dt) % 720;
+
+      // Temperature models
+      const heatInput = (torqueNm * currentRpm / 9549) * 0.3; // ~30% of power → heat
+      coolantTemp = lerp(coolantTemp, 185 + heatInput * 0.15, dt * 0.05);
+      oilTemp = lerp(oilTemp, coolantTemp + 20 + heatInput * 0.1, dt * 0.03);
+      if (fanOn) coolantTemp -= dt * 5;
+
+      // Sensor values
+      const cylinderPressure = getCylinderPressure(crankAngle, throttle, currentRpm, config.compressionRatio);
+      const intakeManifoldPressure = boostPsi > 0 ? 14.7 + boostPsi : 14.7 * (0.3 + throttle * 0.7);
+      const exhaustGasTemp = 400 + (currentRpm / redline) * 800 + throttle * 200 + boostPsi * 15;
+      const oilPressure = 15 + (currentRpm / 1000) * 8;
+      const airFuelRatio = throttle > 0.7 ? config.targetAfrWot : throttle > 0.3 ? config.targetAfrCruise : config.targetAfrIdle;
+      const ignitionTiming = config.baseTimingDeg + (config.maxAdvanceDeg - config.baseTimingDeg) * clamp(currentRpm / redline, 0, 1) - currentKnockRetard;
+      const intakeValveLift = getValveLift(crankAngle, true) * (vtecActive ? config.vtecIntakeLiftMm / 10.6 : config.lowCamIntakeLiftMm / 10.6);
+      const exhaustValveLift = getValveLift(crankAngle, false) * (vtecActive ? config.vtecExhaustLiftMm / 9.4 : config.lowCamExhaustLiftMm / 9.4);
+      const fuelInjectionPulse = clamp(throttle * 8 + (currentRpm / redline) * 4, 0.5, 20);
+      const volumetricEfficiency = 85 + throttle * 15 * clamp(currentRpm / (redline * 0.7), 0.5, 1.1);
+      const speedMph = 0;
+      const engineLoad = clamp(throttle * 100 * (currentRpm / redline) * 0.8 + 20, 0, 100);
+
+      // Knock detection
+      if (currentKnockRetard > 0) {
+        currentKnockRetard = Math.max(0, currentKnockRetard - config.knockRecoveryRate * dt);
+      }
+
+      return {
+        rpm: Math.round(currentRpm),
+        throttlePosition: Math.round(throttle * 100),
+        crankAngle: Math.round(crankAngle),
+        strokePhase: getStrokePhase(crankAngle),
+        cylinderPressure: Math.round(cylinderPressure * 10) / 10,
+        intakeManifoldPressure: Math.round(intakeManifoldPressure * 10) / 10,
+        exhaustGasTemp: Math.round(exhaustGasTemp),
+        coolantTemp: Math.round(coolantTemp),
+        oilTemp: Math.round(oilTemp),
+        oilPressure: Math.round(oilPressure * 10) / 10,
+        airFuelRatio: Math.round(airFuelRatio * 100) / 100,
+        ignitionTiming: Math.round(ignitionTiming * 10) / 10,
+        intakeValveLift: Math.round(intakeValveLift * 100) / 100,
+        exhaustValveLift: Math.round(exhaustValveLift * 100) / 100,
+        sparkAdvance: Math.round(ignitionTiming * 10) / 10,
+        fuelInjectionPulse: Math.round(fuelInjectionPulse * 100) / 100,
+        volumetricEfficiency: Math.round(volumetricEfficiency * 10) / 10,
+        torque: Math.round(torqueFtLb * 10) / 10,
+        horsepower: Math.round(engineHp * 10) / 10,
+        fuelConsumption: Math.round(torqueFtLb * currentRpm / 5252 * 0.5 * 10) / 10,
+        tireRpm: 0,
+        wheelSpeedMph: 0,
+        speedMph: 0,
+        distanceFt: 0,
+        elapsedTime: 0,
+        accelerationG: 0,
+        quarterMileET: null,
+        quarterMileActive: false,
+        quarterMileLaunched: false,
+        clutchIn: true,
+        topSpeedMode: false,
+        topSpeedReached: false,
+        topSpeedMph: null,
+        topSpeedDistanceMi: 0,
+        currentGearDisplay: 0,
+        currentGearRatio: 0,
+        driveshaftRpm: 0,
+        clutchStatus: "DYNO",
+        clutchSlipPct: 0,
+        wheelTorque: Math.round(torqueFtLb * 10) / 10,
+        wheelForce: 0,
+        frontAxleLoad: 0,
+        rearAxleLoad: 0,
+        weightTransfer: 0,
+        tireSlipPercent: 0,
+        tractionLimit: 0,
+        tireTemp: 0,
+        contactPatchArea: 0,
+        tireTempOptimal: true,
+        effectiveGripPct: 0,
+        sixtyFootTime: null,
+        threeThirtyTime: null,
+        eighthMileTime: null,
+        thousandFootTime: null,
+        trapSpeed: null,
+        peakAccelG: 0,
+        peakWheelHp: Math.round(engineHp * 10) / 10,
+        peakRpm: Math.round(currentRpm),
+        peakBoostPsi: Math.round(boostPsi * 10) / 10,
+        peakSpeedMph: 0,
+        peakSlipPercent: 0,
+        dragForce: 0,
+        rollingResistance: 0,
+        netForce: 0,
+        aeroDownforceFrontLb: 0,
+        aeroDownforceRearLb: 0,
+        aeroLiftLb: 0,
+        vtecActive,
+        engineLoad: Math.round(engineLoad),
+        intakeAirTemp: Math.round(iatData.iatF),
+        intakeVacuum: clamp((101.325 - intakeManifoldPressure * 0.6895) * 0.2953, 0, 25),
+        fuelPressure: Math.round(config.fuelPressurePsi * 10) / 10,
+        batteryVoltage: 14.2,
+        o2SensorVoltage: airFuelRatio < 14.7 ? 0.8 : 0.15,
+        knockCount,
+        catalystTemp: Math.round(exhaustGasTemp * 0.85),
+        speedKmh: 0,
+        distanceMeters: 0,
+        boostPsi: Math.round(boostPsi * 10) / 10,
+        fanStatus: fanOn,
+        closedLoopStatus: throttle < 0.7 && config.closedLoopEnabled ? 'CLOSED' : 'OPEN',
+        launchControlActive: false,
+        tractionControlActive: false,
+        knockRetardActive: Math.round(currentKnockRetard * 10) / 10,
+        fuelCutActive,
+        revLimitActive,
+        turboEnabled: config.turboEnabled,
+        nitrousActive: nitrousActiveNow,
+        superchargerEnabled: config.superchargerEnabled,
+        fuelType: config.fuelType,
+        iatF: Math.round(iatData.iatF),
+        airDensity: Math.round(airDensity * 1000) / 1000,
+        densityCorrection: Math.round(iatData.densityCorrection * 1000) / 1000,
+        drivetrainType: config.drivetrainType,
+        frontDiffType: config.frontDiffType,
+        rearDiffType: config.rearDiffType,
+      };
+    }
+    // ══════════════════════════════════════════════════════════════════
+    // END DYNO MODE — normal vehicle dynamics below
+    // ══════════════════════════════════════════════════════════════════
+
     // Cold-weather traction penalty: below 40°F, rubber hardens
     const coldTractionPenalty = config.ambientTempF < 40
       ? clamp(1 - (40 - config.ambientTempF) / 80 * 0.15, 0.85, 1) : 1;
+    // Track surface temperature: asphalt absorbs solar heat.
+    // On a hot day (95°F), pavement can reach 140-160°F.
+    // Hot pavement heats tires faster AND the soft asphalt bites into rubber.
+    const trackSurfaceTempF = config.ambientTempF + clamp((config.ambientTempF - 60) * 1.5, 0, 70);
+    // Hot surface grip bonus: prepped hot drag strip adds traction.
+    // At 77°F ambient → surface ~103°F → small bonus (1.02×)
+    // At 95°F ambient → surface ~148°F → meaningful bonus (1.06×)
+    // Below 70°F → no bonus (cold pavement doesn't help)
+    const hotSurfaceGripMult = trackSurfaceTempF > 100
+      ? clamp(1 + (trackSurfaceTempF - 100) * 0.001, 1.0, 1.08)
+      : 1.0;
     // Drivetrain traction: which axle is driven?
     const isFWD = config.drivetrainType === 'FWD';
     const isRWD = config.drivetrainType === 'RWD';
@@ -2122,11 +3007,36 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       : isRWD ? (1 - config.frontWeightBias)
       : 1; // AWD uses both axles — full weight for traction
 
+    // ── Differential type ────────────────────────────────────────
+    // The diff type doesn't change the tire's static grip limit — both tires
+    // have full grip on a flat, straight drag strip regardless of diff.
+    // What changes is how much PROPULSIVE FORCE the car keeps during
+    // wheelspin: open diff sends all torque to the spinning wheel (wasted),
+    // LSD keeps both wheels pushing, locked = full coupling.
+    const drivenDiffType = isFWD ? config.frontDiffType
+      : isRWD ? config.rearDiffType
+      : config.centerDiffType === 'locked' ? 'locked'
+      : config.centerDiffType === 'torsen' ? 'lsd'
+      : config.centerDiffType === 'viscous' ? 'lsd'
+      : 'open';
+    // Multiplier on kinetic friction force DURING wheelspin:
+    // On a drag strip (equal surface both sides), an open diff sends EQUAL
+    // torque to both wheels. Both tires spin, both provide kinetic friction.
+    // The penalty is from slight asymmetry, torque steer, and spider gear
+    // friction — roughly 15%, not 45%. LSD adds clutch-pack coupling for
+    // better traction recovery. Locked = perfect coupling.
+    const diffWheelspinMult = drivenDiffType === 'locked' ? 1.0
+      : drivenDiffType === 'lsd' ? 0.95
+      : 0.85; // open — both wheels spin on equal surface, small penalty
+
     let wheelForceN = 0;
     let dragForceN = 0;
     let rollingForceN = 0;
     let netForceN = 0;
     let weightTransferN = 0;
+    let aeroDownforceFrontN = 0;
+    let aeroDownforceRearN = 0;
+    let aeroLiftN = 0;
     // Driven axle load depends on drivetrain type
     let frontAxleLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
     let rearAxleLoadN = derived.vehicleMassKg * GRAVITY * (1 - config.frontWeightBias);
@@ -2134,8 +3044,7 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       : isRWD ? rearAxleLoadN
       : (frontAxleLoadN + rearAxleLoadN); // AWD = full vehicle weight for traction
     let effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity) * coldTractionPenalty;
-    let patchArea = getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, drivenAxleLoadN);
-    let patchMultiplier = clamp(patchArea / 30, 0.7, 1.4);
+    let patchMultiplier = getContactPatchMultiplier(config.tireWidthMm, config.tireAspectRatio, drivenAxleLoadN);
     let finalGrip = effectiveGrip * patchMultiplier;
     let maxTractionForceN = drivenAxleLoadN * finalGrip;
     let slipRatio = 0;
@@ -2185,13 +3094,65 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       const gearTarget = config.boostByGearEnabled 
         ? (config.boostByGear[clamp(currentGear, 0, config.boostByGear.length - 1)] || config.boostTargetPsi)
         : config.boostTargetPsi;
-      const targetBoost = gearTarget * rpmFactor * throttleFactor;
-      boostPsi = lerp(boostPsi, targetBoost, dt * 3);
+      
+      // ── Load-dependent boost ──────────────────────────────────
+      // Boost depends on exhaust energy (RPM × throttle × load).
+      // In neutral the load factor reduces boost since there's no combustion load.
+      // Once launched and under acceleration, full boost is available quickly.
+      let loadFactor: number;
+      
+      // Antilag / two-step override: builds boost while staging
+      const antiLagActive = config.antiLagEnabled && config.turboEnabled && clutchIn && throttle > 0.3 && currentRpm > 2500;
+      const twoStepActive = config.twoStepEnabled && clutchIn && currentRpm >= config.twoStepRpm * 0.9;
+      
+      if (antiLagActive || twoStepActive) {
+        // Antilag: builds 70-85% boost while stationary via timing retard
+        loadFactor = clamp(0.7 + throttle * 0.15, 0.7, 0.85);
+        const antilagRetardDeg = config.antiLagRetard || 20;
+        timingRetardTotal += antilagRetardDeg * 0.5;
+      } else if (clutchIn || (!qmActive && currentGear === 0)) {
+        // Neutral / clutch disengaged: reduced load but not negligible
+        // Turbo still spools from exhaust gas — just less efficiently
+        loadFactor = clamp(0.15 + rpmFactor * 0.25, 0.15, 0.40);
+      } else {
+        // In gear under load (launched, driving): full boost available
+        // Immediately after clutch dump engine is under full load
+        loadFactor = clamp(0.85 + throttle * 0.15, 0.85, 1.0);
+      }
+      
+      // Effective target: can never exceed boost cut safety threshold.
+      // A real ECU targets below the cut point to avoid oscillation.
+      // If the user sets target > boostCut, the wastegate simply limits
+      // boost to just under the cut threshold — it doesn't oscillate.
+      //
+      // Wastegate duty controls HOW the target is maintained:
+      //   0% duty = wastegate fully open = boost bleeds off, hard to hold target
+      //  50% duty = normal control = reaches and holds target cleanly
+      // 100% duty = wastegate fully closed = may overshoot target briefly
+      // It does NOT scale the target itself — it affects spool authority.
+      const wgAuthorityFactor = clamp(0.5 + (config.wastegateBaseDuty / 100) * 0.5, 0.5, 1.0);
+      
+      const effectiveTargetBoost = Math.min(
+        gearTarget * rpmFactor * throttleFactor * loadFactor,
+        config.boostCutPsi - 2 // stay 2 PSI below cut
+      );
+      
+      // Turbo spool rate: bigger turbo = slower spool, but not absurdly slow.
+      // A big turbo (200 PSI) on a built motor with anti-lag hits target
+      // within 1-2 seconds of launch — it's not a glacier.
+      // Log scale keeps small turbos snappy and big turbos reasonable.
+      const turboLag = clamp(3.5 / (1 + Math.log(1 + gearTarget / 10)), 0.8, 3.5);
+      const spoolRate = effectiveTargetBoost > boostPsi ? dt * turboLag * wgAuthorityFactor : dt * 6;
+      boostPsi = lerp(boostPsi, effectiveTargetBoost, spoolRate);
 
       if (boostPsi >= config.boostCutPsi) {
+        // Safety fuel cut: brief cut to bleed off a few PSI, then recover.
+        // In a real ECU, boost cut closes the wastegate and cuts fuel for
+        // one combustion cycle — just enough to drop boost below threshold.
         fuelCutActive = true;
         fuelCutFraction = 1.0;
-        boostPsi = lerp(boostPsi, 0, dt * 10);
+        // Drop boost slightly below the cut point, not nuke toward 0
+        boostPsi = config.boostCutPsi - 3;
       }
       boostPsi = clamp(boostPsi, 0, config.boostCutPsi + 2);
     } else if (config.superchargerEnabled) {
@@ -2225,10 +3186,36 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       timingRetardTotal += config.softCutRetard * softCutProg;
     }
 
+    // ── Turbo despool during fuel cut ────────────────────────
+    // When fuel is cut (rev limiter, boost cut, etc.), no combustion occurs
+    // → no exhaust gas → no energy to drive the turbine. The turbo's
+    // rotational inertia keeps it spinning briefly, but boost bleeds off.
+    // Bigger turbos have more rotational inertia → slower despool.
+    // A brief rev-limiter bounce (10-20ms) barely affects boost.
+    // A sustained fuel cut (boost cut) drops it faster.
+    if (config.turboEnabled && fuelCutFraction > 0.5 && boostPsi > 0) {
+      // Bigger turbo (higher target) = heavier turbine wheel = more inertia
+      const turboInertiaFactor = clamp(1.0 / (1 + config.boostTargetPsi / 50), 0.2, 1.0);
+      const despoolRate = dt * 1.5 * turboInertiaFactor;
+      boostPsi = lerp(boostPsi, boostPsi * 0.7, despoolRate * fuelCutFraction);
+    }
+
     if (qmActive && qmET === null) {
       if (shiftTimer > 0) {
         shiftTimer -= dt;
-        if (shiftTimer < 0) shiftTimer = 0;
+        if (shiftTimer <= 0) {
+          shiftTimer = 0;
+          // Shift just completed — snap RPM to match wheel speed through NEW gear.
+          // In a manual transmission: clutch in → gear change → clutch out.
+          // Engine RPM must match wheel angular velocity × new gear ratio.
+          // This naturally drops RPM on upshift (lower ratio = lower RPM for same wheel speed).
+          gearRatio = config.gearRatios[clamp(currentGear, 0, config.gearRatios.length - 1)];
+          totalRatio = gearRatio * config.finalDriveRatio;
+          const postShiftWheelRadius = derived.tireRadiusM;
+          const wheelAngVel = wheelSpeedMps / postShiftWheelRadius;
+          const postShiftRpm = wheelAngVel * totalRatio * 60 / (2 * Math.PI);
+          currentRpm = clamp(Math.max(postShiftRpm, config.targetIdleRpm), config.targetIdleRpm, config.fuelCutRpm);
+        }
       }
 
       gearRatio = config.gearRatios[clamp(currentGear, 0, config.gearRatios.length - 1)];
@@ -2249,6 +3236,15 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
           fuelCutFraction = Math.max(fuelCutFraction, config.launchFuelCutPct / 100);
         }
         
+        // Two-step rev limiter: secondary rev limit for launch staging
+        // Holds RPM at twoStepRpm while clutch is in, building boost on turbo cars
+        if (config.twoStepEnabled && currentRpm > config.twoStepRpm) {
+          // Hard cut at two-step RPM (bouncing limiter feel)
+          fuelCutFraction = Math.max(fuelCutFraction, 0.8);
+          timingRetardTotal += 15; // aggressive retard for backfire pops
+          currentRpm = clamp(currentRpm, idleRpm, config.twoStepRpm + 100);
+        }
+        
         // Smoothly approach target RPM (engine not loaded)
         const rpmDelta = targetRevRpm - currentRpm;
         currentRpm = clamp(currentRpm + rpmDelta * dt * 8, idleRpm, fuelCutRpm);
@@ -2258,184 +3254,447 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
         wheelTorqueFtLb = 0;
         
       } else {
+        // ═══════════════════════════════════════════════════════════
         // LAUNCHED: Clutch is out, power goes to wheels
-        
-        // Only count time after clutch is released
+        // ═══════════════════════════════════════════════════════════
+        //
+        // Physics model:
+        //   1. Compute engine torque at current RPM
+        //   2. Brief clutch engagement phase (clutchSlipping = true)
+        //      limits transmitted torque for first ~0.05-0.15s
+        //   3. After clutch locks: full engine torque → wheel force
+        //   4. Check wheel surface speed vs ground speed:
+        //      - If wheel speed > ground speed → WHEELSPIN
+        //        RPM via torque balance, car pushes forward via kinetic friction
+        //      - If wheel speed ≈ ground speed → GRIP
+        //        RPM = ground speed × gearing, full traction
+        //   5. Shift decision
+        //
         qmElapsedTime += dt;
         
-        // Calculate what engine is trying to push to wheels (INCLUDING forced induction)
-        let launchTorqueFtLb = getB16Torque(currentRpm, throttle, config.compressionRatio, customTorqueMap);
-        const camMult = getCamTorqueMultiplier(currentRpm, vtecActive, config);
-        launchTorqueFtLb *= camMult;
+        // ── Step 1: Engine torque at current RPM ─────────────────
+        let torqueFtLb = getEngineTorque(currentRpm, throttle, config.compressionRatio, customTorqueMap, config.engineId);
+        torqueFtLb *= getCylinderScaling(config.numCylinders, config.engineId);
+        torqueFtLb *= getCamTorqueMultiplier(currentRpm, vtecActive, config);
         
-        // Include turbo/supercharger boost in launch torque calculation!
         if (config.turboEnabled && boostPsi > 0) {
-          const boostMult = 1 + (boostPsi / 14.7) * 0.9;
-          launchTorqueFtLb *= boostMult;
+          torqueFtLb *= 1 + (boostPsi / 14.7) * 0.9;
         } else if (config.superchargerEnabled && boostPsi > 0) {
-          const scMult = 1 + (boostPsi / 14.7) * 0.9;
-          launchTorqueFtLb *= scMult;
+          torqueFtLb *= 1 + (boostPsi / 14.7) * 0.9;
+          torqueFtLb -= scParasiticLoss;
+        }
+        if (config.nitrousEnabled) {
+          const nosActive = currentRpm >= config.nitrousActivationRpm && (throttle >= 0.95 || !config.nitrousFullThrottleOnly);
+          if (nosActive && currentRpm > 0) {
+            nitrousActiveNow = true;
+            torqueFtLb += config.nitrousHpAdder * 5252 / currentRpm;
+          }
+        }
+        torqueFtLb *= chargePowerMult;
+        torqueFtLb *= Math.max(0.3, 1 - timingRetardTotal / 60); // timing retard
+        torqueFtLb *= (1 - fuelCutFraction); // fuel cut
+        
+        const engineTorqueNm = torqueFtLb * 1.3558;
+        
+        // ── Step 2: Clutch engagement ────────────────────────────
+        // When the clutch is dumped (100% engagement), the disc face slams
+        // into the flywheel and locks INSTANTLY — no progressive grab, no
+        // smoothing curve, no slip phase. The pressure plate clamps the disc
+        // to the flywheel face and ALL engine torque transfers directly
+        // through the gearbox to the wheels. Period.
+        //
+        // For partial engagement (feathered clutch), there IS a progressive
+        // grab phase where the disc slips against the flywheel.
+        let transmittedTorqueNm = engineTorqueNm;
+        
+        if (clutchSlipping && !clutchFullyEngaged) {
+          clutchLockupTimer += dt;
+          const engagementPct = clamp(config.clutchEngagement, 0, 100);
+          
+          if (engagementPct >= 95) {
+            // HARD DUMP: Instant lockup on the FIRST frame.
+            // Clutch disc face slams against flywheel — mechanical bond.
+            // No grab curve, no smoothing, no slip. This is a drag launch.
+            clutchSlipping = false;
+            clutchFullyEngaged = true;
+            clutchSlipPct = 0;
+            transmittedTorqueNm = engineTorqueNm; // 100% torque transfer
+            
+            // ── Clutch lockup: what happens to RPM? ──
+            // It depends on whether the tires can hold the torque.
+            //
+            // CASE 1: Wheel force > tire grip (WHEELSPIN)
+            //   The tires break loose immediately. The engine only feels
+            //   kinetic friction reflected through the drivetrain — a fraction
+            //   of the full vehicle inertia. Engine RPM stays HIGH because
+            //   the load is small. Tires scream, car creeps forward.
+            //   This is the 50psi-on-street-tires scenario.
+            //
+            // CASE 2: Wheel force ≤ tire grip (TRACTION)
+            //   Tires hold. Engine couples rigidly to vehicle mass through
+            //   gearing. Conservation of angular momentum: both engine and
+            //   vehicle equilibrate to a common speed. Engine RPM drops
+            //   significantly (bogs). This is the stock NA car scenario.
+            
+            // Compute what the wheel force WOULD be once the engine is under load.
+            // For forced-induction cars, the turbo/supercharger will spool rapidly
+            // once the clutch locks and the engine sees full load. Using ONLY the
+            // current boost (which is near-zero from neutral) would incorrectly
+            // predict the grip path and bog the engine to death before the turbo
+            // can ever spool. Instead, estimate the POTENTIAL torque the engine
+            // will produce within ~0.5s of being under full load.
+            let potentialTorqueNm = engineTorqueNm;
+            
+            if (config.turboEnabled && config.boostTargetPsi > 0) {
+              // Strip current (minimal) boost to get base NA torque
+              const currentBoostMult = boostPsi > 0 ? (1 + (boostPsi / 14.7) * 0.9) : 1;
+              const baseTorqueNm = engineTorqueNm / currentBoostMult;
+              // Estimate ~60% of target boost available shortly after lockup
+              // (big turbos spool slower, but even 60% of 50 PSI is massive)
+              const potentialBoostPsi = config.boostTargetPsi * 0.6;
+              const potentialBoostMult = 1 + (potentialBoostPsi / 14.7) * 0.9;
+              potentialTorqueNm = baseTorqueNm * potentialBoostMult;
+            } else if (config.superchargerEnabled && config.superchargerMaxBoostPsi > 0) {
+              // Superchargers are mechanically driven — immediate boost at RPM
+              const currentBoostMult = boostPsi > 0 ? (1 + (boostPsi / 14.7) * 0.9) : 1;
+              const baseTorqueNm = engineTorqueNm / currentBoostMult;
+              const potentialBoostMult = 1 + (config.superchargerMaxBoostPsi * 0.8 / 14.7) * 0.9;
+              potentialTorqueNm = baseTorqueNm * potentialBoostMult;
+            }
+            if (config.nitrousEnabled && currentRpm >= config.nitrousActivationRpm) {
+              potentialTorqueNm += config.nitrousHpAdder * 5252 / currentRpm * 1.3558;
+            }
+            
+            const launchWheelForceN = (potentialTorqueNm * totalRatio * (1 - derived.drivetrainLoss)) / wheelRadius;
+            
+            // On a drag strip with equal surface, open diff sends equal torque
+            // to both wheels. The effective traction threshold is similar for
+            // all diff types. LSD/locked = slightly better grip under asymmetry.
+            const launchTractionEffective = drivenDiffType === 'locked' ? maxTractionForceN
+              : drivenDiffType === 'lsd' ? maxTractionForceN * 0.85
+              : maxTractionForceN * 0.85; // open diff: both tires contribute on equal surface
+            
+            if (launchWheelForceN > launchTractionEffective) {
+              // ═══ WHEELSPIN LAUNCH ═══
+              // Tires can't hold. Engine stays at launch RPM.
+              // Wheel speed set from engine RPM — tires spinning on pavement.
+              // Step 4 wheelspin code will handle the torque balance from here.
+              wheelSpeedMps = (currentRpm / totalRatio) * (2 * Math.PI * wheelRadius) / 60;
+              // Car gets a small speed bump from the kinetic friction impulse
+              // but engine RPM barely drops.
+            } else {
+              // ═══ GRIP LAUNCH ═══
+              // Tires hold. Conservation of angular momentum determines
+              // the equilibrium between engine inertia and vehicle inertia.
+              const engineSideInertia = ENGINE_INERTIA_KGM2 + 0.03; // engine + flywheel + gears
+              const vehicleInertiaAtCrank = derived.vehicleMassKg * wheelRadius * wheelRadius / (totalRatio * totalRatio);
+              const totalSystemInertia = engineSideInertia + vehicleInertiaAtCrank;
+              
+              const engineOmegaRad = currentRpm * 2 * Math.PI / 60;
+              const vehicleOmegaAtCrank = speedMps > 0.1
+                ? (speedMps / wheelRadius) * totalRatio
+                : 0;
+              
+              const combinedOmega = (engineSideInertia * engineOmegaRad + vehicleInertiaAtCrank * vehicleOmegaAtCrank) / totalSystemInertia;
+              const equilibriumRpm = clamp(combinedOmega * 60 / (2 * Math.PI), idleRpm, fuelCutRpm);
+              const equilibriumSpeedMps = (equilibriumRpm / totalRatio) * (2 * Math.PI * wheelRadius) / 60;
+              
+              currentRpm = equilibriumRpm;
+              wheelSpeedMps = equilibriumSpeedMps;
+              speedMps = Math.max(speedMps, equilibriumSpeedMps);
+              // Sync prevSpeedMps so the weight transfer calculation later this
+              // frame doesn't see a phantom 150+ m/s² acceleration from the
+              // instantaneous speed jump (0 → equilibrium in one frame).
+              prevSpeedMps = speedMps;
+            }
+          } else {
+            // FEATHERED CLUTCH: Progressive engagement for partial clutch dumps.
+            const engagementTime = Math.max(0.08, 1.5 * Math.pow(1 - engagementPct / 100, 2));
+            const grabProgress = clamp(clutchLockupTimer / engagementTime, 0, 1);
+            const grabCurve = grabProgress * grabProgress * (3 - 2 * grabProgress);
+            
+            const effectiveClutchNm = Math.max(config.clutchMaxTorqueNm, engineTorqueNm * 1.1);
+            const clutchCapacityNm = effectiveClutchNm * grabCurve;
+            transmittedTorqueNm = Math.min(engineTorqueNm, clutchCapacityNm);
+            
+            clutchSlipPct = engineTorqueNm > 0 && clutchCapacityNm < engineTorqueNm
+              ? Math.round((1 - clutchCapacityNm / engineTorqueNm) * 1000) / 10 : 0;
+            
+            if (grabProgress >= 0.98) {
+              clutchSlipping = false;
+              clutchFullyEngaged = true;
+              clutchSlipPct = 0;
+              const wheelDrivenRpm = (wheelSpeedMps / wheelRadius) * (60 / (2 * Math.PI)) * totalRatio;
+              currentRpm = clamp(Math.max(wheelDrivenRpm, idleRpm), idleRpm, fuelCutRpm);
+            }
+          }
+        } else {
+          // Clutch fully locked — disc is clamped to flywheel.
+          // 100% of engine torque passes through. No capacity limit.
+          // A locked clutch is a rigid mechanical connection.
+          transmittedTorqueNm = engineTorqueNm;
+          clutchSlipPct = 0;
+        }
+        
+        // ── Step 3: Wheel force from transmitted torque ──────────
+        const rawWheelForceN = (transmittedTorqueNm * totalRatio * (1 - derived.drivetrainLoss)) / wheelRadius;
+        wheelTorqueFtLb = (transmittedTorqueNm / 1.3558) * totalRatio * (1 - derived.drivetrainLoss);
+        _lastEngineTorqueNm = engineTorqueNm;
+        _lastTransmittedTorqueNm = transmittedTorqueNm;
+        _lastRawWheelForceN = rawWheelForceN;
+        
+        // ── Step 4: Wheelspin vs Grip ────────────────────────────
+        // During shift (clutch disengaged): no drive force, wheels coast.
+        // Otherwise, check if tires are spinning.
+        if (shiftTimer > 0) {
+          // SHIFTING: clutch is in, no power to wheels, engine unloaded
+          wheelForceN = 0;
+          wheelTorqueFtLb = 0;
+          // Wheel speed decays toward ground speed via tire-road friction.
+          // Undriven spinning wheels decelerate based on kinetic friction
+          // and the wheel assembly's rotational inertia (tire + rim).
+          // Much faster than rolling resistance — the tires are sliding,
+          // so µ_kinetic × normalForce decelerates the spinning wheels.
+          const shiftFrictionN = maxTractionForceN * 0.78 * diffWheelspinMult;
+          const wheelEffMass = Math.max(derived.totalTireInertia / (wheelRadius * wheelRadius), 20);
+          const wheelDecel = Math.min(shiftFrictionN / wheelEffMass, 40); // cap at 40 m/s²
+          wheelSpeedMps = Math.max(wheelSpeedMps - wheelDecel * dt, speedMps);
+          slipRatio = speedMps > 0.5 ? clamp((wheelSpeedMps - speedMps) / speedMps, 0, 3.0) : 0;
+          clutchStatus = "SHIFTING";
+          // Engine free-revs slightly down (no load, fuel cut during shift)
+          currentRpm = clamp(currentRpm - 500 * dt, config.targetIdleRpm, config.fuelCutRpm);
         }
 
-        // Fuel type & intake air charge correction
-        launchTorqueFtLb *= chargePowerMult;
-
-        // Compute raw engine crankshaft torque for wheelspin detection
-        // (uses full engine torque — clutch capacity is applied later in the
-        //  post-launch driving-force calculation that actually accelerates the car)
-        const engineTorqueNmRaw = launchTorqueFtLb * 1.3558;
+        const wheelSurfaceSpeedMps = (currentRpm / totalRatio) * (2 * Math.PI * wheelRadius) / 60;
+        const groundSpeedMps = speedMps;
+        const speedBasedWheelspin = wheelSurfaceSpeedMps > groundSpeedMps + 0.5; // >0.5 m/s difference
+        const forceBasedWheelspin = rawWheelForceN > maxTractionForceN && throttle > 0.15;
+        // CRITICAL: wheels must actually be spinning faster than the car is moving.
+        // forceBasedWheelspin alone means the engine CAN break the tires loose,
+        // but if wheel surface speed ≤ ground speed, the tires are hooked up
+        // and we must use the GRIP path (RPM locked to ground speed).
+        const wheelsActuallySpinning = wheelSurfaceSpeedMps > groundSpeedMps + 0.3;
         
-        const launchForceN = (engineTorqueNmRaw * totalRatio * (1 - derived.drivetrainLoss)) / wheelRadius;
-        
-        // Check traction limit - use static load (weight transfer comes later)
-        const staticFrontLoad = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
-        const gripCoeff = compound.baseGrip * (config.tireGripPct / 100);
-        const maxTraction = staticFrontLoad * gripCoeff;
-        
-        // Force ratio determines wheelspin potential
-        const forceRatio = launchForceN / maxTraction;
-        
-        // Wheelspin occurs when force significantly exceeds traction
-        // Higher power = more wheelspin but tires still accelerate the car
-        const isWheelspinning = forceRatio > 0.95 && throttle > 0.7 && speedMps < 20;
-        
-        if (isWheelspinning) {
-          // WHEELSPIN MODE - tires spin but car still accelerates
-          const excessRatio = Math.max(0, forceRatio - 0.95);
-          slipRatio = Math.min(0.5, excessRatio * 0.25 + 0.05);
+        if (shiftTimer > 0) {
+          // Already handled above — skip wheelspin/grip during shift
+        } else if ((forceBasedWheelspin || speedBasedWheelspin) && wheelsActuallySpinning) {
+          // ═══════════════════════════════════════════════════════
+          // WHEELSPIN: tires spinning faster than car is moving
+          // ═══════════════════════════════════════════════════════
           
-          // At very low speed, slightly more slip
-          if (speedMps < 5) {
-            slipRatio = Math.min(0.6, slipRatio + 0.08);
+          // Kinetic friction coefficient by compound
+          const kineticRatio = config.tireCompound === 'drag_slick' ? 0.92
+            : config.tireCompound === 'full_slick' ? 0.88
+            : config.tireCompound === 'semi_slick' ? 0.85
+            : config.tireCompound === 'sport' ? 0.82
+            : 0.78; // street
+          
+          // Kinetic force: sliding friction from the spinning tire(s).
+          // With open diff, only one tire spins → diffWheelspinMult ≈ 0.55.
+          const kineticForceN = maxTractionForceN * kineticRatio * diffWheelspinMult;
+          
+          // Compute slip ratio for hookup model
+          let currentSlipRatio: number;
+          if (groundSpeedMps > 1.0) {
+            currentSlipRatio = clamp((wheelSurfaceSpeedMps - groundSpeedMps) / groundSpeedMps, 0, 5.0);
+          } else {
+            currentSlipRatio = clamp((wheelSurfaceSpeedMps - groundSpeedMps) / 2.0, 0, 5.0);
           }
           
-          // Wheel spins faster than ground speed
-          wheelSpeedMps = speedMps * (1 + slipRatio);
+          // ── Unified hookup model ──────────────────────────────
+          // As slip ratio decreases, the tire progressively transitions from
+          // kinetic (sliding) to static (adhesion) friction — like a Pacejka
+          // slip curve. The tire's grip force at the contact patch depends
+          // ONLY on the tire/road interface (normal load × µ at current slip),
+          // NOT on how much torque the engine is producing.
+          //
+          // This friction force simultaneously:
+          //   1. Pushes the car forward (reaction force at contact patch)
+          //   2. Brakes the wheel (resisting rotation)
+          //
+          // When friction > engine torque at wheel → wheel decelerates →
+          // slip drops → hookup increases → convergence.
+          //
+          // The "extra" forward force (beyond what the engine pushes) comes
+          // from the decelerating wheel/engine assembly's rotational KE.
+          //
+          // hookup at slip=0: 1.0 (full grip)
+          // hookup at slip=0.5: 0.61
+          // hookup at slip=1.0: 0.37
+          // hookup at slip=2.0: 0.14
+          // hookup at slip=5.0: 0.007 (pure slide)
+          const hookupSmooth = Math.exp(-currentSlipRatio * 1.0);
           
-          // Engine RPM calculation: 
-          // - At standstill with wheelspin, engine stays at launch RPM (throttle-dependent)
-          // - As speed builds, gradually sync to wheel speed
-          const wheelRpm = (wheelSpeedMps / wheelRadius) * (60 / (2 * Math.PI));
-          const engineRpmFromWheel = wheelRpm * totalRatio;
+          // Tire friction force: blends from kinetic toward FULL axle static grip
+          // as tires hook up. This is the contact-patch force, independent of
+          // engine output — it's what the road surface "pushes back" on the tire.
+          const hookupForceN = lerp(kineticForceN, maxTractionForceN, hookupSmooth);
           
-          // During heavy wheelspin at low speed, engine stays at throttle-demanded RPM
-          const throttleRpm = idleRpm + throttle * (config.launchControlEnabled ? config.launchControlRpm - idleRpm : redline * 0.85 - idleRpm);
+          // Forward force on the car from spinning tires:
+          // When the engine IS producing torque (rawWheelForceN > 0):
+          //   Cap at rawWheelForceN — the tire can't push harder than the
+          //   engine drives it (prevents phantom acceleration).
+          // When the engine is in FUEL CUT (rawWheelForceN ≈ 0):
+          //   The spinning wheels still have angular momentum. The kinetic
+          //   friction at the contact patch simultaneously:
+          //     1. Pushes the car forward (hookupForceN)
+          //     2. Decelerates the wheel (converting rotational KE to linear KE)
+          //   This is real physics — the car doesn't lose ALL thrust during
+          //   a momentary fuel cut at the rev limiter. The tires are still
+          //   spinning and still have contact-patch friction.
+          wheelForceN = rawWheelForceN > 0
+            ? Math.min(hookupForceN, rawWheelForceN)
+            : hookupForceN; // fuel cut: spinning wheels still push via kinetic friction
           
-          // Blend: at standstill favor throttle RPM, as speed builds transition to wheel-driven
-          const speedBlend = clamp(speedMps / 15, 0, 1);
-          const targetRpm = lerp(throttleRpm, engineRpmFromWheel, speedBlend);
+          // Engine load = tire friction force reflected back to the crankshaft.
+          // The tire-road contact patch pushes back on the wheel with hookupForceN.
+          // This is what resists wheel rotation — NOT the engine's own output.
+          // With open diff at high slip: hookupForceN ≈ kineticForceN (very low)
+          //   → engine sees almost no load → revs to redline instantly (correct!)
+          // As tires hook up: hookupForceN → maxTractionForceN (high)
+          //   → engine sees heavy load → RPM drops toward equilibrium
+          // Using rawWheelForceN here was WRONG: it made engineLoad = engineTorque
+          // (perfect cancellation), so net torque = 0 and RPM never changed.
+          const engineLoadForceN = hookupForceN;
           
-          // Smooth RPM changes
-          const rpmDelta = targetRpm - currentRpm;
-          currentRpm = clamp(currentRpm + rpmDelta * dt * 10, idleRpm, fuelCutRpm);
+          // ── Engine RPM via torque balance ──────────────────────
+          const roadLoadAtCrank = engineLoadForceN * wheelRadius / (totalRatio * (1 - derived.drivetrainLoss));
+          const effectiveLoad = clutchSlipping
+            ? Math.min(transmittedTorqueNm, roadLoadAtCrank)
+            : roadLoadAtCrank;
           
-          clutchStatus = "SPINNING";
+          const netEngineTorqueNm = engineTorqueNm - effectiveLoad;
+          const wheelInertiaAtCrank = derived.totalTireInertia / (totalRatio * totalRatio);
+          const engineInertia = ENGINE_INERTIA_KGM2 + 0.03 + wheelInertiaAtCrank;
+          const angularAccel = netEngineTorqueNm / engineInertia;
+          const rpmChange = (angularAccel * 60) / (2 * Math.PI) * dt;
+          currentRpm = clamp(currentRpm + rpmChange, idleRpm, fuelCutRpm);
+          
+          // Wheel speed from engine RPM (engine drives wheels through gearbox)
+          wheelSpeedMps = (currentRpm / totalRatio) * (2 * Math.PI * wheelRadius) / 60;
+          
+          // Slip ratio
+          if (groundSpeedMps > 0.5) {
+            slipRatio = clamp((wheelSpeedMps - groundSpeedMps) / groundSpeedMps, 0.02, 3.0);
+          } else {
+            slipRatio = clamp(wheelSpeedMps / 2.0, 0.1, 3.0);
+          }
+          
+          clutchStatus = slipRatio > 0.1 ? "SPINNING" : "ENGAGING";
           
         } else {
-          // NORMAL TRACTION - wheels grip, engine RPM tied to wheel speed
+          // ═══════════════════════════════════════════════════════
+          // GRIP: wheel speed ≈ ground speed, full traction
+          // ═══════════════════════════════════════════════════════
+          // Cap forward force at max traction — any excess will cause
+          // wheelspin on the NEXT frame (entering SPINNING path).
+          wheelForceN = Math.min(rawWheelForceN, maxTractionForceN);
           slipRatio = 0;
-          wheelSpeedMps = speedMps;
+          wheelSpeedMps = groundSpeedMps;
           
-          const vehicleDrivenRpm = (speedMps / wheelRadius) * (60 / (2 * Math.PI)) * totalRatio;
-          
-          // At very low speed during clutch engagement
-          if (speedMps < 3 && vehicleDrivenRpm < idleRpm * 1.5) {
-            // Clutch dump transfers power rapidly — fast coupling with slight lugging
-            const targetRpm = Math.max(idleRpm * 0.9, vehicleDrivenRpm);
-            currentRpm = clamp(lerp(currentRpm, targetRpm, dt * 15), idleRpm * 0.7, fuelCutRpm);
-            clutchStatus = "ENGAGING";
-          } else {
-            currentRpm = clamp(Math.max(vehicleDrivenRpm, idleRpm), idleRpm, fuelCutRpm);
-            clutchStatus = "ENGAGED";
-          }
+          // RPM = ground speed × gearing (engine locked to wheels locked to ground)
+          const wheelDrivenRpm = (groundSpeedMps / wheelRadius) * (60 / (2 * Math.PI)) * totalRatio;
+          currentRpm = clamp(Math.max(wheelDrivenRpm, idleRpm), idleRpm, fuelCutRpm);
+          clutchStatus = clutchSlipping ? "ENGAGING" : "ENGAGED";
         }
-
+        
+        // ── Step 5: Shift decision ───────────────────────────────
         if (shiftTimer > 0) {
           clutchStatus = "SHIFTING";
         }
-
+        
+        const minShiftSpeedMph = currentGear === 0 ? 5 : 3; // bare-minimum safety floor
+        const currentSpeedForShift = speedMps * 2.237;
+        // Block shifts during excessive wheelspin in FIRST GEAR ONLY.
+        // At launch, upshifting during a massive burnout makes things worse.
+        // In higher gears, the driver would shift normally even with moderate slip —
+        // the tires recover quickly after the shift because the next gear's
+        // torque multiplication is lower.
+        const excessiveWheelspin = currentGear === 0 && slipRatio > 0.5;
+        
+        // ── Landed-RPM gate ─────────────────────────────────────
+        // A skilled driver doesn't shift until the car has enough speed
+        // that the RPM will land in the powerband of the next gear.
+        // Compute where RPM would land in the next gear based on
+        // ACTUAL VEHICLE SPEED (not wheel speed during wheelspin).
+        let landedRpmOk = true;
+        if (currentGear < config.gearRatios.length - 1) {
+          const nextGearRatio = config.gearRatios[currentGear + 1];
+          const nextTotalRatio = nextGearRatio * config.finalDriveRatio;
+          // RPM = (groundSpeed / wheelRadius) × totalRatio × 60/(2π)
+          const landedRpm = (speedMps / wheelRadius) * nextTotalRatio * 60 / (2 * Math.PI);
+          // Find peak torque RPM for this engine
+          const tMap = customTorqueMap || getEngineTorqueMap(config.engineId);
+          let peakTorqueRpm = 5000;
+          let peakTorque = 0;
+          for (const [r, t] of tMap) {
+            if (t > peakTorque) { peakTorque = t; peakTorqueRpm = r; }
+          }
+          // Must land at least at 50% of peak torque RPM.
+          // This prevents shifting into a gear where RPM is too low to
+          // make useful power, but allows shifts once the car has built
+          // enough speed. A real driver won't sit at the limiter for 5+
+          // seconds — they shift once RPM will land above mid-range.
+          const minLandedRpm = peakTorqueRpm * 0.50;
+          landedRpmOk = landedRpm >= minLandedRpm;
+        }
+        
+        // canUpshift: base requirements for shifting (speed, clutch, landed RPM)
+        // The landed-RPM gate is NON-NEGOTIABLE — a real driver would NEVER
+        // shift if RPM would land below the powerband, regardless of how long
+        // they've been bouncing off the limiter. They wait for speed.
+        const canUpshift = currentSpeedForShift > minShiftSpeedMph && !clutchSlipping && landedRpmOk;
+        // The first-gear wheelspin block can be overridden by the dwell timer
+        // (after enough time, even a wheelspin shift is better than sitting).
+        const canUpshiftNow = canUpshift && !excessiveWheelspin;
+        
+        let shouldShift = false;
         const gearRedline = config.gearRevLimits[clamp(currentGear, 0, config.gearRevLimits.length - 1)] || redline;
-        if (currentRpm >= gearRedline && currentGear < config.gearRatios.length - 1) {
-          currentGear++;
-          shiftTimer = derived.shiftTimeS;
-          log.debug('engineSim', `Shift to gear ${currentGear + 1}`, { rpm: Math.round(currentRpm), speed: Math.round(speedMps * 2.237) });
+
+        if (config.customShiftPointsEnabled && currentGear < config.gearRatios.length - 1) {
+          if (config.customShiftPointsMode === 'rpm') {
+            shouldShift = currentRpm >= (config.customShiftPointsRpm[currentGear] ?? gearRedline);
+          } else if (config.customShiftPointsMode === 'wheel_speed') {
+            shouldShift = (wheelSpeedMps * 2.23694) >= (config.customShiftPointsWheelSpeedMph[currentGear] ?? 999);
+          } else {
+            shouldShift = (speedMps * 2.23694) >= (config.customShiftPointsMph[currentGear] ?? 999);
+          }
+        } else {
+          const optimalRpm = cachedOptimalShiftPoints[currentGear] ?? gearRedline;
+          shouldShift = currentRpm >= Math.min(optimalRpm, gearRedline) && currentGear < config.gearRatios.length - 1;
+        }
+        if (currentRpm >= gearRedline && currentGear < config.gearRatios.length - 1 && canUpshiftNow) {
+          shouldShift = true;
         }
 
-        if (shiftTimer <= 0) {
-          let torqueFtLb = getB16Torque(currentRpm, throttle, config.compressionRatio, customTorqueMap);
-          const camMultiplier = getCamTorqueMultiplier(currentRpm, vtecActive, config);
-          torqueFtLb *= camMultiplier;
+        // High-RPM dwell timer: tracks time spent bouncing off the limiter.
+        // Used to override the first-gear wheelspin block after enough time,
+        // but NEVER overrides the landed-RPM gate — that's physics, not preference.
+        const dwellThresholdRpm = Math.min(
+          cachedOptimalShiftPoints[currentGear] ?? gearRedline,
+          gearRedline
+        ) - 200; // 200 RPM below shift point
+        if (currentRpm >= dwellThresholdRpm && shiftTimer <= 0 && currentGear < config.gearRatios.length - 1) {
+          highRpmDwellTime += dt;
+        } else {
+          highRpmDwellTime = 0;
+        }
+        // After 1s at the limiter, override the first-gear wheelspin block
+        // but ONLY if landed RPM is in the powerband (canUpshift includes it).
+        if (highRpmDwellTime >= 1.0 && canUpshift && shiftTimer <= 0 && currentGear < config.gearRatios.length - 1) {
+          shouldShift = true;
+          log.debug('engineSim', `High-RPM dwell shift forced after ${highRpmDwellTime.toFixed(2)}s at ${Math.round(currentRpm)} RPM`, { gear: currentGear + 1 });
+        }
 
-          if (config.turboEnabled && boostPsi > 0) {
-            const boostMultiplier = 1 + (boostPsi / 14.7) * 0.9;
-            torqueFtLb *= boostMultiplier;
-          } else if (config.superchargerEnabled && boostPsi > 0) {
-            const scMultiplier = 1 + (boostPsi / 14.7) * 0.9;
-            torqueFtLb *= scMultiplier;
-            torqueFtLb -= scParasiticLoss;
-          }
-
-          if (config.nitrousEnabled) {
-            const nosActive = currentRpm >= config.nitrousActivationRpm && (throttle >= 0.95 || !config.nitrousFullThrottleOnly);
-            if (nosActive && currentRpm > 0) {
-              nitrousActiveNow = true;
-              const nitrousAdder = config.nitrousHpAdder * 5252 / currentRpm;
-              torqueFtLb += nitrousAdder;
-            }
-          }
-
-          // Fuel type & intake air charge correction
-          torqueFtLb *= chargePowerMult;
-
-          const timingFactor = Math.max(0.3, 1 - timingRetardTotal / 60);
-          torqueFtLb *= timingFactor;
-
-          const fuelFactor = 1 - fuelCutFraction;
-          torqueFtLb *= fuelFactor;
-
-          const engineTorqueNm = torqueFtLb * 1.3558;
-
-          // --- Clutch torque capacity model ---
-          // The clutch disc can only transmit up to clutchMaxTorqueNm.
-          // Any excess torque is lost as friction heat on the disc (engine revs freely).
-          let transmittedTorqueNm = engineTorqueNm;
-          if (engineTorqueNm > config.clutchMaxTorqueNm) {
-            transmittedTorqueNm = config.clutchMaxTorqueNm;
-            const cSlip = 1 - config.clutchMaxTorqueNm / engineTorqueNm;
-            clutchSlipPct = Math.max(clutchSlipPct, Math.round(cSlip * 1000) / 10);
+        if (shouldShift && (canUpshiftNow || (highRpmDwellTime >= 1.0 && canUpshift)) && shiftTimer <= 0) {
+          currentGear++;
+          highRpmDwellTime = 0;
+          if (config.flatFootShiftEnabled) {
+            shiftTimer = (config.flatFootShiftCutTime || 80) / 1000;
           } else {
-            clutchSlipPct = 0;
+            shiftTimer = derived.shiftTimeS;
           }
-
-          let rawWheelForceN = (transmittedTorqueNm * totalRatio * (1 - derived.drivetrainLoss)) / wheelRadius;
-          wheelTorqueFtLb = (transmittedTorqueNm / 1.3558) * totalRatio * (1 - derived.drivetrainLoss);
-          
-          // REALISTIC traction limiting - mainly affects low speed launches
-          // At higher speeds, tires can handle more power (warmed up, less torque multiplication)
-          const tractionForce = staticFrontLoad * gripCoeff;
-          
-          // Speed factor: traction limiting fades out as speed increases
-          // At 0 mph: full traction limiting (launch)
-          // At 30 mph: 50% traction limiting effect
-          // At 60+ mph: minimal traction limiting (tires can handle it)
-          const speedMph = speedMps * 2.237;
-          const tractionLimitFactor = Math.max(0.1, 1 - speedMph / 80);
-          
-          if (rawWheelForceN > tractionForce) {
-            const excessRatio = rawWheelForceN / tractionForce;
-            
-            // Efficiency loss from wheelspin (only at low speed)
-            const efficiencyFactor = 1 / (1 + Math.log(excessRatio) * 0.5 * tractionLimitFactor);
-            
-            // Limited force never exceeds traction capacity
-            const limitedForce = tractionForce * Math.min(1.0, efficiencyFactor);
-            wheelForceN = limitedForce + (rawWheelForceN - limitedForce) * (1 - tractionLimitFactor);
-            
-            // Slip ratio - only significant at low speed
-            slipRatio = Math.min(0.7, (excessRatio - 1) * 0.25 * tractionLimitFactor);
-          } else {
-            wheelForceN = rawWheelForceN;
-          }
+          log.debug('engineSim', `Shift to gear ${currentGear + 1}`, { rpm: Math.round(currentRpm), speed: Math.round(speedMps * 2.237) });
         }
       }
 
@@ -2444,9 +3703,83 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       weightTransferN *= aiCorrections.weightTransferMultiplier;
       const staticFrontLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
       const staticRearLoadN = derived.vehicleMassKg * GRAVITY * (1 - config.frontWeightBias);
+
+      // ── Aero downforce & lift (speed² dependent, active at ALL speeds) ──
+      // F = 0.5 × ρ × C × A × v²
+      const aeroQ = 0.5 * airDensity * config.frontalAreaM2 * speedMps * speedMps; // dynamic pressure × area
+
+      // Body lift — positive = upward force that reduces normal load
+      // Typical sedan: CL ≈ 0.20-0.35, Honda Civic EK ≈ 0.29
+      const bodyLiftCl = config.bodyLiftCoefficient ?? 0.29;
+      aeroLiftN = aeroQ * bodyLiftCl;
+
+      // Downforce from aero parts (configured coefficients + contributions from extended aero parts)
+      // Each aero part adds to the total downforce coefficient
+      let totalDownforceCl = (config.downforceCoefficientFront ?? 0) + (config.downforceCoefficientRear ?? 0);
+
+      // Extended aero part contributions (realistic Cl increments):
+      // Rear wing: Cl depends on type and angle of attack
+      if (config.rearWingEnabled || (config.rearWingType && config.rearWingType !== 'none')) {
+        const wingAngle = config.rearWingAngleDeg ?? 5;
+        const wingBase = config.rearWingType === 'gt_wing' ? 0.22
+          : config.rearWingType === 'swan_neck' ? 0.25
+          : config.rearWingType === 'duckbill' ? 0.08
+          : config.rearWingType === 'lip' ? 0.04
+          : 0.12; // generic
+        // More angle = more downforce (diminishing above ~15°, stalling above ~25°)
+        const angleEff = wingAngle <= 15 ? wingAngle / 10
+          : wingAngle <= 25 ? 1.5 - (wingAngle - 15) * 0.03
+          : Math.max(0.3, 1.2 - (wingAngle - 15) * 0.04);
+        totalDownforceCl += wingBase * angleEff;
+      }
+      // Front splitter
+      if (config.frontSplitterEnabled) {
+        const splitterCl = config.frontSplitterMaterialType === 'carbon' ? 0.10
+          : config.frontSplitterMaterialType === 'aluminum' ? 0.09
+          : 0.07; // ABS
+        totalDownforceCl += splitterCl;
+      }
+      // Rear diffuser
+      if (config.rearDiffuserEnabled) {
+        const diffAngle = config.rearDiffuserAngleDeg ?? 12;
+        // Optimal diffuser angle ~7-12°; too steep = flow separation
+        const diffEff = diffAngle <= 12 ? diffAngle / 12 : Math.max(0.4, 1.0 - (diffAngle - 12) * 0.04);
+        totalDownforceCl += 0.15 * diffEff;
+      }
+      // Canards
+      if (config.canardEnabled) {
+        const canardAngle = config.canardAngleDeg ?? 10;
+        totalDownforceCl += 0.04 * Math.min(canardAngle / 10, 1.5);
+      }
+      // Flat undertray (reduces turbulence, enables ground effect)
+      if (config.flatUndertrayEnabled) {
+        totalDownforceCl += 0.08;
+        // Also reduces body lift by ~30%
+        aeroLiftN *= 0.70;
+      }
+      // Side skirts help seal underbody air
+      if (config.sideSkirtType === 'aero') {
+        totalDownforceCl += 0.03;
+        aeroLiftN *= 0.90;
+      }
+
+      const totalDownforceN = aeroQ * totalDownforceCl;
+      // Split downforce front/rear using aeroBalancePct (0=full front, 100=full rear)
+      const aeroBalance = (config.aeroBalancePct ?? 45) / 100; // default 45% front
+      aeroDownforceFrontN = totalDownforceN * (1 - aeroBalance);
+      aeroDownforceRearN = totalDownforceN * aeroBalance;
+
+      // Lift splits roughly 40% front / 60% rear on a sedan body
+      const liftFrontN = aeroLiftN * 0.40;
+      const liftRearN = aeroLiftN * 0.60;
+
       // Weight transfer: under acceleration, load shifts to rear
-      frontAxleLoadN = staticFrontLoadN - weightTransferN;
-      rearAxleLoadN = staticRearLoadN + weightTransferN;
+      // Aero: downforce adds to load, lift subtracts from load
+      frontAxleLoadN = staticFrontLoadN - weightTransferN + aeroDownforceFrontN - liftFrontN;
+      rearAxleLoadN = staticRearLoadN + weightTransferN + aeroDownforceRearN - liftRearN;
+      // Clamp to prevent negative axle loads (car would lift off ground)
+      frontAxleLoadN = Math.max(frontAxleLoadN, 0);
+      rearAxleLoadN = Math.max(rearAxleLoadN, 0);
       // Driven axle load for traction calculation
       if (isFWD) {
         // FWD loses some traction under acceleration (weight lifts off front)
@@ -2459,9 +3792,8 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
         drivenAxleLoadN = frontAxleLoadN + rearAxleLoadN;
       }
 
-      effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity) * coldTractionPenalty;
-      patchArea = getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, drivenAxleLoadN);
-      patchMultiplier = clamp(patchArea / 30, 0.7, 1.4);
+      effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity) * coldTractionPenalty * hotSurfaceGripMult;
+      patchMultiplier = getContactPatchMultiplier(config.tireWidthMm, config.tireAspectRatio, drivenAxleLoadN);
       finalGrip = effectiveGrip * patchMultiplier;
       maxTractionForceN = drivenAxleLoadN * finalGrip * aiCorrections.gripMultiplier;
 
@@ -2482,8 +3814,9 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
           finalGrip, 
           currentHorsePower,
           config.tireCompound,
-          frontAxleLoadN,
-          tempEfficiency
+          drivenAxleLoadN,
+          tempEfficiency,
+          speedMps
         );
         
         if (tractionCheck.breakingLoose) {
@@ -2508,14 +3841,16 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
               finalGrip, 
               currentHorsePower * tcTimingFactor * tcFuelFactor,
               config.tireCompound,
-              frontAxleLoadN,
-              tempEfficiency
+              drivenAxleLoadN,
+              tempEfficiency,
+              speedMps
             );
             slipRatio = updatedTractionCheck.slipRatio;
           }
 
-          // DON'T hard-cap wheel force - just calculate wheel speed for visual
-          // This lets more power = faster acceleration even with slip
+          // Cap wheel force at traction limit — excess force causes wheelspin,
+          // it doesn't create free acceleration. Wheel speed for visual.
+          wheelForceN = Math.min(wheelForceN, maxTractionForceN);
           wheelSpeedMps = speedMps * (1 + slipRatio);
         }
       }
@@ -2529,19 +3864,61 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       prevSpeedMps = speedMps;
       speedMps = Math.max(speedMps + accelMps2 * dt, 0);
 
-      // Speed limiter via progressive fuel cut (like a real ECU)
-      // Starts cutting fuel 5mph below the limit, full cut at limit
-      const speedLimitMps = config.speedLimiterMph / 2.237;
-      const speedLimitOnsetMps = (config.speedLimiterMph - 5) / 2.237;
-      if (speedMps > speedLimitOnsetMps) {
-        const limitProgress = clamp((speedMps - speedLimitOnsetMps) / (speedLimitMps - speedLimitOnsetMps), 0, 1);
-        // Progressive braking force — simulates fuel cut + aero drag at limit
-        const limitForce = limitProgress * derived.vehicleMassKg * 3.0; // strong decel
-        speedMps = Math.max(speedMps - (limitForce / derived.effectiveMassKg) * dt, 0);
-        if (limitProgress > 0.5) fuelCutActive = true;
+      // ── QM race telemetry (every ~0.1s) ──────────────────────
+      if (qmLaunched && qmET === null) {
+        // Log at ~10Hz (every 100ms) plus first 5 frames for launch detail
+        const frameNum = Math.round(qmElapsedTime / dt);
+        if (frameNum <= 5 || Math.round(qmElapsedTime * 10) !== Math.round((qmElapsedTime - dt) * 10)) {
+          console.log(`[QM ${qmElapsedTime.toFixed(3)}s] RPM=${Math.round(currentRpm)} gear=${currentGear + 1} mph=${(speedMps * 2.237).toFixed(1)} ft=${distanceFt.toFixed(1)} wheelF=${Math.round(wheelForceN)}N netF=${Math.round(netForceN)}N accel=${accelMps2.toFixed(2)}m/s² slip=${(slipRatio * 100).toFixed(1)}% clutch=${clutchSlipping ? 'SLIP' : clutchFullyEngaged ? 'LOCKED' : 'OPEN'} status=${clutchStatus} fuelCut=${fuelCutFraction.toFixed(2)}`);
+        }
+        // ── Capture EVERY frame for diagnostics ──
+        runTelemetry.push({
+          t: +qmElapsedTime.toFixed(4),
+          rpm: Math.round(currentRpm),
+          gear: currentGear + 1,
+          mph: +(speedMps * 2.237).toFixed(2),
+          ft: +distanceFt.toFixed(2),
+          wheelF: Math.round(wheelForceN),
+          rawWheelF: Math.round(_lastRawWheelForceN),
+          maxTractionF: Math.round(maxTractionForceN),
+          netF: Math.round(netForceN),
+          accel: +accelMps2.toFixed(3),
+          slip: +(slipRatio * 100).toFixed(2),
+          clutchSlip: clutchSlipping,
+          clutchLocked: clutchFullyEngaged,
+          status: clutchStatus,
+          engineTorqueNm: +_lastEngineTorqueNm.toFixed(1),
+          transmittedNm: +_lastTransmittedTorqueNm.toFixed(1),
+          fuelCut: +fuelCutFraction.toFixed(3),
+          tireTemp: +tireTemp.toFixed(1),
+          grip: +finalGrip.toFixed(4),
+          frontLoadLbs: +(frontAxleLoadN * 0.2248).toFixed(1),
+          rearLoadLbs: +(rearAxleLoadN * 0.2248).toFixed(1),
+          drivenLoadLbs: +(drivenAxleLoadN * 0.2248).toFixed(1),
+          weightTransferLbs: +(weightTransferN * 0.2248).toFixed(1),
+          wheelSpeedMph: +(wheelSpeedMps * 2.237).toFixed(2),
+          dragF: Math.round(dragForceN),
+          boostPsi: +boostPsi.toFixed(2),
+          dt: +dt.toFixed(5),
+          throttle: +throttle.toFixed(3),
+        });
       }
-      // Hard backstop — never exceed limiter
-      if (speedMps > speedLimitMps) speedMps = speedLimitMps;
+
+      // Speed limiter via progressive fuel cut (like a real ECU)
+      // Disabled during quarter mile runs (drag strip, no street speed limit)
+      if (!qmLaunched) {
+        const speedLimitMps = config.speedLimiterMph / 2.237;
+        const speedLimitOnsetMps = (config.speedLimiterMph - 5) / 2.237;
+        if (speedMps > speedLimitOnsetMps) {
+          const limitProgress = clamp((speedMps - speedLimitOnsetMps) / (speedLimitMps - speedLimitOnsetMps), 0, 1);
+          // Progressive braking force — simulates fuel cut + aero drag at limit
+          const limitForce = limitProgress * derived.vehicleMassKg * 3.0; // strong decel
+          speedMps = Math.max(speedMps - (limitForce / derived.effectiveMassKg) * dt, 0);
+          if (limitProgress > 0.5) fuelCutActive = true;
+        }
+        // Hard backstop — never exceed limiter
+        if (speedMps > speedLimitMps) speedMps = speedLimitMps;
+      }
 
       const avgSpeedMps = (prevSpeedMps + speedMps) / 2;
       distanceFt += avgSpeedMps * dt * 3.28084;
@@ -2583,14 +3960,47 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       const currentSlipPct = Math.abs(slipRatio) * 100;
       if (currentSlipPct > peakSlipPercent) peakSlipPercent = currentSlipPct;
 
-      const slipHeat = Math.abs(slipRatio) * dt * 200 * compound.heatRate;
-      const forceHeat = (wheelForceN * N_TO_LBS / 5000) * dt * 5 * compound.heatRate;
-      tireTemp += slipHeat + forceHeat;
-      const ambientTemp = 80;
-      tireTemp = lerp(tireTemp, ambientTemp, dt * 0.01 * compound.coolRate);
-      tireTemp = clamp(tireTemp, ambientTemp, 400);
+      // Tire temperature model — heat from slip friction and mechanical deformation.
+      // Street tires on a stock Civic should gain ~20-40°F in a quarter mile,
+      // NOT overheat. Previous coefficients (200, 5) were ~15x too aggressive,
+      // causing grip to plummet from 0.88→0.63 in 5 seconds.
+      const slipHeat = Math.abs(slipRatio) * dt * 15 * compound.heatRate;
+      const forceHeat = (wheelForceN * N_TO_LBS / 5000) * dt * 0.5 * compound.heatRate;
+      // Hot track surface heats tires faster (conduction from pavement)
+      const surfaceHeat = trackSurfaceTempF > tireTemp ? (trackSurfaceTempF - tireTemp) * 0.002 * dt : 0;
+      tireTemp += slipHeat + forceHeat + surfaceHeat;
+      // Tire cools toward track surface temp (not ambient — tire sits on hot pavement)
+      const tireCoolTarget = Math.max(trackSurfaceTempF * 0.7, config.ambientTempF);
+      tireTemp = lerp(tireTemp, tireCoolTarget, dt * 0.01 * compound.coolRate);
+      tireTemp = clamp(tireTemp, config.ambientTempF, 400);
 
-      if (distanceFt >= QUARTER_MILE_FT) {
+      if (topSpeedMode) {
+        // TOP SPEED MODE — no distance limit, detect terminal velocity
+        // Record speed samples every ~0.5s for terminal velocity detection
+        const sampleInterval = 0.5; // seconds
+        const sampleIndex = Math.floor(qmElapsedTime / sampleInterval);
+        if (sampleIndex >= topSpeedSamples.length && qmElapsedTime > 2) {
+          topSpeedSamples.push(currentSpeedMph);
+        }
+        // Terminal velocity: last 6 samples (3 seconds) differ by < 0.5 mph
+        if (!topSpeedReached && topSpeedSamples.length >= 6) {
+          const recent = topSpeedSamples.slice(-6);
+          const maxRecent = Math.max(...recent);
+          const minRecent = Math.min(...recent);
+          if (maxRecent - minRecent < 0.5 && currentSpeedMph > 10) {
+            topSpeedReached = true;
+            topSpeedMph = Math.round(currentSpeedMph * 10) / 10;
+            trapSpeed = topSpeedMph;
+            qmET = qmElapsedTime;
+            log.info('engineSim', 'Top speed REACHED', {
+              topSpeed: topSpeedMph?.toFixed(1),
+              elapsed: qmElapsedTime.toFixed(1),
+              distanceMi: (distanceFt / 5280).toFixed(2),
+              peakHp: peakWheelHp.toFixed(1),
+            });
+          }
+        }
+      } else if (distanceFt >= QUARTER_MILE_FT) {
         const overshootFt = distanceFt - QUARTER_MILE_FT;
         const overshootTime = avgSpeedMps > 0 ? (overshootFt * 0.3048) / avgSpeedMps : 0;
         qmET = qmElapsedTime - overshootTime;
@@ -2625,13 +4035,13 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       frontAxleLoadN = derived.vehicleMassKg * GRAVITY * config.frontWeightBias;
       rearAxleLoadN = derived.vehicleMassKg * GRAVITY * (1 - config.frontWeightBias);
       drivenAxleLoadN = isFWD ? frontAxleLoadN : isRWD ? rearAxleLoadN : (frontAxleLoadN + rearAxleLoadN);
-      effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity) * coldTractionPenalty;
-      patchArea = getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, drivenAxleLoadN);
-      patchMultiplier = clamp(patchArea / 30, 0.7, 1.4);
+      effectiveGrip = getTireGripAtTemp(compound, tireTemp, config.tireGripPct, config.tireTempSensitivity) * coldTractionPenalty * hotSurfaceGripMult;
+      patchMultiplier = getContactPatchMultiplier(config.tireWidthMm, config.tireAspectRatio, drivenAxleLoadN);
       finalGrip = effectiveGrip * patchMultiplier;
       maxTractionForceN = drivenAxleLoadN * finalGrip * aiCorrections.gripMultiplier;
 
-      let freeRevTorque = getB16Torque(currentRpm, throttle, config.compressionRatio, customTorqueMap);
+      let freeRevTorque = getEngineTorque(currentRpm, throttle, config.compressionRatio, customTorqueMap, config.engineId);
+      freeRevTorque *= getCylinderScaling(config.numCylinders, config.engineId);
       const freeRevCamMult = getCamTorqueMultiplier(currentRpm, vtecActive, config);
       freeRevTorque *= freeRevCamMult;
 
@@ -2658,11 +4068,12 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       freeRevTorque *= freeRevFuelFactor;
 
       let engineTorqueNmFree = freeRevTorque * 1.3558;
-      // Clutch torque capacity limit in free-rev / normal driving
-      if (engineTorqueNmFree > config.clutchMaxTorqueNm) {
-        const cSlip = 1 - config.clutchMaxTorqueNm / engineTorqueNmFree;
+      // Clutch torque capacity — auto-scale to handle engine output
+      const effectiveClutchNmFree = Math.max(config.clutchMaxTorqueNm, engineTorqueNmFree * 1.1);
+      if (engineTorqueNmFree > effectiveClutchNmFree) {
+        const cSlip = 1 - effectiveClutchNmFree / engineTorqueNmFree;
         clutchSlipPct = Math.max(clutchSlipPct, Math.round(cSlip * 1000) / 10);
-        engineTorqueNmFree = config.clutchMaxTorqueNm;
+        engineTorqueNmFree = effectiveClutchNmFree;
       }
       wheelForceN = (engineTorqueNmFree * totalRatio * (1 - derived.drivetrainLoss)) / wheelRadius;
       wheelTorqueFtLb = (engineTorqueNmFree / 1.3558) * totalRatio * (1 - derived.drivetrainLoss);
@@ -2680,8 +4091,9 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
         finalGrip, 
         freeRevHorsePower,
         config.tireCompound,
-        frontAxleLoadN,
-        freeRevTempEfficiency
+        drivenAxleLoadN,
+        freeRevTempEfficiency,
+        speedMps
       );
       
       if (freeRevTractionCheck.breakingLoose && throttle > 0.3) {
@@ -2704,20 +4116,22 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
             finalGrip, 
             freeRevHorsePower * tcTimingFactor * tcFuelFactor,
             config.tireCompound,
-            frontAxleLoadN,
-            freeRevTempEfficiency
+            drivenAxleLoadN,
+            freeRevTempEfficiency,
+            speedMps
           );
           slipRatio = updatedFreeRevCheck.slipRatio;
         }
 
-        const slipHeat = slipRatio * dt * 150 * compound.heatRate;
+        const slipHeat = slipRatio * dt * 12 * compound.heatRate;
         tireTemp += slipHeat;
       } else {
         slipRatio = freeRevTractionCheck.slipRatio; // Even when not breaking loose, use Pacejka slip
       }
 
-      tireTemp = lerp(tireTemp, 80, dt * 0.01 * compound.coolRate);
-      tireTemp = clamp(tireTemp, 80, 400);
+      const freeRevCoolTarget = Math.max(trackSurfaceTempF * 0.7, config.ambientTempF);
+      tireTemp = lerp(tireTemp, freeRevCoolTarget, dt * 0.01 * compound.coolRate);
+      tireTemp = clamp(tireTemp, config.ambientTempF, 400);
       clutchStatus = "ENGAGED";
     }
 
@@ -2741,7 +4155,8 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     const intakeValveLift = getValveLift(crankAngle, true) * (configIntakeLift / stockIntakeLift);
     const exhaustValveLift = getValveLift(crankAngle, false) * (configExhaustLift / stockExhaustLift);
 
-    let torque = getB16Torque(currentRpm, throttle, config.compressionRatio, customTorqueMap);
+    let torque = getEngineTorque(currentRpm, throttle, config.compressionRatio, customTorqueMap, config.engineId);
+    torque *= getCylinderScaling(config.numCylinders, config.engineId);
     const displayCamMultiplier = getCamTorqueMultiplier(currentRpm, vtecActive, config);
     torque *= displayCamMultiplier;
 
@@ -2778,8 +4193,15 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     const rpmNorm = currentRpm / redline;
     const baseEGT = 400 + throttle * 900 + rpmNorm * 350;
     let egtExtra = 0;
-    if (config.turboEnabled && config.antiLagEnabled && throttle < 0.2 && currentRpm > 3000) {
-      egtExtra = 200;
+    // Antilag / two-step: unburnt fuel igniting in exhaust manifold causes extreme EGT
+    const isAntilagFiring = config.turboEnabled && config.antiLagEnabled && clutchIn && throttle > 0.3 && currentRpm > 2500;
+    const isTwoStepFiring = config.turboEnabled && config.twoStepEnabled && clutchIn && currentRpm >= config.twoStepRpm * 0.9;
+    if (isAntilagFiring || isTwoStepFiring) {
+      // Antilag exhaust flames: 200-400°F extra EGT from combustion in manifold
+      egtExtra = 300 + Math.random() * 100;
+    } else if (config.turboEnabled && config.antiLagEnabled && throttle < 0.2 && currentRpm > 3000) {
+      // Off-throttle antilag (mild pops and bangs)
+      egtExtra = 100 + Math.random() * 80;
     }
     const exhaustGasTemp = baseEGT + egtExtra + Math.random() * 10 - 5;
 
@@ -2827,17 +4249,14 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     const engineDrivenWheelRpm = totalRatio > 0 ? currentRpm / totalRatio : 0;
     
     if (qmActive && qmLaunched) {
-      if (slipRatio > 0.05) {
-        // WHEELSPIN! Tire is spinning faster than vehicle speed
-        // Tire RPM = ground speed RPM * (1 + slip)
-        // At standstill with 50% slip, tire spins at engine-driven speed
-        const wheelSurfaceSpeed = wheelSpeedMps > 0 ? wheelSpeedMps : speedMps * (1 + slipRatio);
-        tireRpm = (wheelSurfaceSpeed / (derived.tireCircumferenceFt * 0.3048)) * 60;
+      if (slipRatio > 0.03) {
+        // WHEELSPIN! Tire spins faster than vehicle ground speed.
+        // Tire RPM = engine RPM / total gear ratio (engine drives wheels through gearbox)
+        // This is the ACTUAL wheel surface speed, which is faster than ground speed.
+        tireRpm = engineDrivenWheelRpm;
         
-        // At very low speed, use engine-driven RPM directly
-        if (speedMps < 2 && slipRatio > 0.1) {
-          tireRpm = Math.max(tireRpm, engineDrivenWheelRpm * 0.8);
-        }
+        // Ensure tire RPM is at least the ground-speed RPM (can't spin slower than road)
+        tireRpm = Math.max(tireRpm, groundSpeedRpm);
       } else {
         // No slip - tire matches ground speed
         tireRpm = groundSpeedRpm;
@@ -2868,9 +4287,31 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       o2SensorVoltage = 0.1 + Math.random() * 0.2;
     }
 
-    if (currentRpm > 6000 && throttle > 0.8 && Math.random() < (config.knockSensitivity / 10) * 0.002) {
-      knockCount++;
-      currentKnockRetard += config.knockRetardDeg;
+    // ── Knock detection: accounts for compression ratio, fuel octane, and RPM ──
+    // Higher compression requires higher octane fuel to avoid detonation.
+    // Methanol (~105 octane equiv) and E85 (~105) are nearly knock-proof.
+    // Gasoline octane must be sufficient for the compression ratio.
+    {
+      const octaneBase = config.fuelType === 'gasoline' ? config.gasolineOctane
+        : config.fuelType === 'e85' ? 105
+        : config.fuelType === 'methanol' ? 108
+        : Math.max(config.gasolineOctane, 90 + config.ethanolContentPct * 0.15); // flex
+
+      // Required octane rises with compression ratio. Stock 10.2:1 needs ~91 octane.
+      // Every 1.0 CR above stock needs ~3 more octane points.
+      const requiredOctane = 91 + (config.compressionRatio - STOCK_COMPRESSION_RATIO) * 3;
+
+      // Knock probability: only if fuel octane is insufficient for the CR
+      const octaneDeficit = requiredOctane - octaneBase; // positive = knock-prone
+      if (currentRpm > 4000 && throttle > 0.6 && octaneDeficit > 0) {
+        // Knock chance scales with deficit: 1 octane short = mild, 5+ = severe
+        const knockChance = (config.knockSensitivity / 10) * 0.003 * Math.pow(octaneDeficit, 1.5);
+        if (Math.random() < knockChance) {
+          knockCount++;
+          currentKnockRetard += config.knockRetardDeg;
+        }
+      }
+      // With sufficient octane (methanol, E85, high-octane gas): zero knock
     }
 
     const closedLoopStatus = (config.closedLoopEnabled && throttle < 0.7 && currentRpm < redline * 0.8) ? 'CLOSED' : 'OPEN';
@@ -2894,22 +4335,19 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
     }
 
     // ── CRITICAL: NaN/Infinity sanitization ──
-    // Prevents cascading corruption from any single bad calculation.
-    // If any value goes NaN/Infinity, reset to safe defaults.
-    function sanitize(v: number, fallback: number, min?: number, max?: number): number {
+    // Prevents NaN/Infinity from corrupting state. No artificial gameplay caps.
+    function sanitize(v: number, fallback: number): number {
       if (!Number.isFinite(v)) return fallback;
-      if (min !== undefined && v < min) return min;
-      if (max !== undefined && v > max) return max;
       return v;
     }
-    currentRpm = sanitize(currentRpm, idleRpm, 0, fuelCutRpm + 500);
-    speedMps = sanitize(speedMps, 0, 0, 100); // max ~224mph
-    boostPsi = sanitize(boostPsi, 0, -20, 50);
-    tireTemp = sanitize(tireTemp, 100, 30, 500);
-    coolantTemp = sanitize(coolantTemp, 185, 50, 350);
-    oilTemp = sanitize(oilTemp, 210, 50, 400);
-    crankAngle = sanitize(crankAngle, 0, 0, 720);
-    distanceFt = sanitize(distanceFt, distanceFt, 0, 100000);
+    currentRpm = sanitize(currentRpm, idleRpm);
+    speedMps = sanitize(speedMps, 0);
+    boostPsi = sanitize(boostPsi, 0);
+    tireTemp = sanitize(tireTemp, 100);
+    coolantTemp = sanitize(coolantTemp, 185);
+    oilTemp = sanitize(oilTemp, 210);
+    crankAngle = sanitize(crankAngle, 0);
+    distanceFt = sanitize(distanceFt, 0);
 
     return {
       rpm: Math.round(currentRpm),
@@ -2944,6 +4382,11 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       quarterMileLaunched: qmLaunched,
       clutchIn: clutchIn,
 
+      topSpeedMode: topSpeedMode,
+      topSpeedReached: topSpeedReached,
+      topSpeedMph: topSpeedMph,
+      topSpeedDistanceMi: Math.round(distanceFt / 5280 * 100) / 100,
+
       currentGearDisplay,
       currentGearRatio: Math.round(currentGearRatio * 1000) / 1000,
       driveshaftRpm: Math.round(driveshaftRpm),
@@ -2957,8 +4400,11 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       tireSlipPercent: Math.round(tireSlipPercent * 10) / 10,
       tractionLimit: Math.round(maxTractionForceN * N_TO_LBS * 10) / 10,
       tireTemp: Math.round(tireTemp * 10) / 10,
-      contactPatchArea: Math.round(patchArea * 10) / 10,
+      contactPatchArea: Math.round(getContactPatchArea(config.tireWidthMm, config.tireAspectRatio, drivenAxleLoadN) * 10) / 10,
       tireTempOptimal: tireTemp >= compound.optimalTempLow && tireTemp <= compound.optimalTempHigh,
+      // Effective grip as percentage: finalGrip / stock_baseline × 100
+      // Stock street tire at optimal temp = 100%. Compound changes, temp, surface, patch all affect this.
+      effectiveGripPct: Math.round(finalGrip / 0.88 * 100 * 10) / 10,
 
       sixtyFootTime: sixtyFootTime !== null ? Math.round(sixtyFootTime * 1000) / 1000 : null,
       threeThirtyTime: threeThirtyTime !== null ? Math.round(threeThirtyTime * 1000) / 1000 : null,
@@ -2975,6 +4421,9 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
       dragForce: qmActive ? Math.round(dragForceN * N_TO_LBS * 10) / 10 : 0,
       rollingResistance: Math.round(rollingForceN * N_TO_LBS * 10) / 10,
       netForce: Math.round(netForceN * N_TO_LBS * 10) / 10,
+      aeroDownforceFrontLb: Math.round(aeroDownforceFrontN * N_TO_LBS * 10) / 10,
+      aeroDownforceRearLb: Math.round(aeroDownforceRearN * N_TO_LBS * 10) / 10,
+      aeroLiftLb: Math.round(aeroLiftN * N_TO_LBS * 10) / 10,
 
       vtecActive,
       engineLoad: Math.round(engineLoad * 10) / 10,
@@ -3013,7 +4462,234 @@ export function createEngineSimulation(ecuConfig?: EcuConfig) {
 
   function setAiCorrections(c: { gripMultiplier: number; weightTransferMultiplier: number; slipMultiplier: number; dragMultiplier: number; tractionMultiplier: number }) { aiCorrections = c; }
   function getAiCorrections() { return aiCorrections; }
-  function setCustomTorqueMap(map: [number, number][] | null) { customTorqueMap = map; }
+  function setCustomTorqueMap(map: [number, number][] | null) {
+    customTorqueMap = map;
+    cachedOptimalShiftPoints = computeOptimalShiftPoints(
+      config.gearRatios, config.redlineRpm, config.engineId, customTorqueMap, config.compressionRatio
+    );
+  }
   function getCustomTorqueMap(): [number, number][] | null { return customTorqueMap ? customTorqueMap.map(([r, t]) => [r, t]) : null; }
-  return { update, setThrottle, startQuarterMile, launchCar, resetQuarterMile, isRunning: () => running, setEcuConfig, getEcuConfig, setAiCorrections, getAiCorrections, setCustomTorqueMap, getCustomTorqueMap };
+
+  // ══════════════════════════════════════════════════════════════════
+  // DYNO MODE METHODS
+  // ══════════════════════════════════════════════════════════════════
+
+  function setDynoMode(enabled: boolean) {
+    dynoMode = enabled;
+    if (!enabled) {
+      dynoPullActive = false;
+      dynoPullProgress = 0;
+      dynoCurrentRun = [];
+      dynoAbsorberTorqueNm = 0;
+    }
+    // In dyno mode, engine idles on the dyno — no vehicle motion
+    if (enabled) {
+      speedMps = 0;
+      distanceFt = 0;
+      wheelSpeedMps = 0;
+      qmActive = false;
+      qmLaunched = false;
+      topSpeedMode = false;
+      clutchIn = true;
+      currentGear = 0;
+    }
+  }
+
+  function isDynoMode(): boolean { return dynoMode; }
+
+  function startDynoPull(pullConfig: DynoPullConfig) {
+    dynoPullConfig = pullConfig;
+    dynoPullActive = true;
+    dynoPullProgress = 0;
+    dynoPullElapsed = 0;
+    dynoCurrentRun = [];
+    dynoSampleTimer = 0;
+    dynoStepIndex = 0;
+    dynoStepHoldTimer = 0;
+    dynoAbsorberTorqueNm = 0;
+
+    // Set initial RPM target
+    if (pullConfig.programType === 'steady_state') {
+      dynoRpmTarget = pullConfig.holdRpm ?? pullConfig.startRpm;
+    } else {
+      dynoRpmTarget = pullConfig.startRpm;
+    }
+
+    // Pre-condition engine RPM near start
+    currentRpm = Math.max(currentRpm, pullConfig.startRpm * 0.8);
+
+    // Set throttle
+    throttle = pullConfig.throttlePct / 100;
+    targetRpm = config.redlineRpm; // let absorber control RPM
+  }
+
+  function abortDynoPull() {
+    dynoPullActive = false;
+    throttle = 0;
+    targetRpm = config.targetIdleRpm;
+  }
+
+  function freeDynoRev(throttleValue: number) {
+    if (!dynoMode) return;
+    throttle = clamp(throttleValue, 0, 1);
+    targetRpm = config.targetIdleRpm + throttle * (config.redlineRpm - config.targetIdleRpm);
+  }
+
+  /** Called each frame when dynoMode + dynoPullActive — updates RPM target, samples data, detects completion */
+  function updateDynoPull(dt: number, engineTorqueNm: number, engineHp: number) {
+    if (!dynoPullActive) return;
+    dynoPullElapsed += dt;
+    dynoSampleTimer += dt;
+
+    const cfg = dynoPullConfig;
+
+    // Advance RPM target based on program type
+    if (cfg.programType === 'wot_sweep' || cfg.programType === 'part_throttle') {
+      dynoRpmTarget = cfg.startRpm + dynoPullElapsed * cfg.sweepRateRpmPerSec;
+      dynoPullProgress = clamp((dynoRpmTarget - cfg.startRpm) / (cfg.endRpm - cfg.startRpm), 0, 1);
+    } else if (cfg.programType === 'steady_state') {
+      dynoRpmTarget = cfg.holdRpm ?? cfg.startRpm;
+      dynoPullProgress = clamp(dynoPullElapsed / 10, 0, 1); // 10s steady state pull
+    } else if (cfg.programType === 'step_test') {
+      const stepSize = cfg.stepSizeRpm ?? 500;
+      const holdTime = cfg.stepHoldTimeSec ?? 3;
+      const nSteps = Math.ceil((cfg.endRpm - cfg.startRpm) / stepSize) + 1;
+      dynoStepHoldTimer += dt;
+      if (dynoStepHoldTimer >= holdTime && dynoStepIndex < nSteps - 1) {
+        dynoStepIndex++;
+        dynoStepHoldTimer = 0;
+      }
+      dynoRpmTarget = cfg.startRpm + dynoStepIndex * stepSize;
+      dynoPullProgress = clamp(dynoStepIndex / (nSteps - 1), 0, 1);
+    }
+
+    // Absorber torque: PD controller to hold engine at dynoRpmTarget
+    const rpmError = currentRpm - dynoRpmTarget;
+    const omega = currentRpm * Math.PI / 30;
+    dynoAbsorberTorqueNm = clamp(rpmError * DYNO_ABSORBER_GAIN * 0.1, -200, engineTorqueNm * 1.5);
+
+    // Sample data every ~25ms (40 Hz)
+    if (dynoSampleTimer >= 0.025) {
+      dynoSampleTimer = 0;
+      const airDensity = getAirDensity(config.ambientTempF, config.humidityPct, config.altitudeFt);
+      const iatCorr = getIATCorrection(config.ambientTempF, boostPsi, config.intercoolerEnabled, config.intercoolerEfficiencyPct);
+      const point: DynoDataPoint = {
+        rpm: Math.round(currentRpm),
+        torqueNm: Math.round(engineTorqueNm * 10) / 10,
+        torqueFtLb: Math.round(engineTorqueNm * 0.7376 * 10) / 10,
+        hp: Math.round(engineHp * 10) / 10,
+        boostPsi: Math.round(boostPsi * 10) / 10,
+        afrActual: Math.round((config.targetAfrWot + (Math.random() - 0.5) * 0.3) * 10) / 10,
+        egtF: Math.round(900 + (currentRpm / config.redlineRpm) * 600 + boostPsi * 15),
+        iatF: Math.round(iatCorr.iatF),
+        timingDeg: Math.round(config.baseTimingDeg + (config.maxAdvanceDeg - config.baseTimingDeg) * clamp(currentRpm / config.redlineRpm, 0, 1) - currentKnockRetard),
+        vePct: Math.round(85 + throttle * 15 * clamp(currentRpm / (config.redlineRpm * 0.7), 0.5, 1.1)),
+        injDutyPct: Math.round(clamp((currentRpm / config.redlineRpm) * throttle * 85, 5, 98)),
+        oilTempF: Math.round(oilTemp),
+        coolantTempF: Math.round(coolantTemp),
+        throttlePct: Math.round(throttle * 100),
+        timestamp: dynoPullElapsed,
+      };
+      dynoCurrentRun.push(point);
+    }
+
+    // Completion check
+    if (cfg.programType === 'wot_sweep' || cfg.programType === 'part_throttle') {
+      if (dynoRpmTarget >= cfg.endRpm) {
+        finalizeDynoPull();
+      }
+    } else if (cfg.programType === 'steady_state') {
+      if (dynoPullElapsed >= 10) {
+        finalizeDynoPull();
+      }
+    } else if (cfg.programType === 'step_test') {
+      const stepSize = cfg.stepSizeRpm ?? 500;
+      const holdTime = cfg.stepHoldTimeSec ?? 3;
+      const nSteps = Math.ceil((cfg.endRpm - cfg.startRpm) / stepSize) + 1;
+      if (dynoStepIndex >= nSteps - 1 && dynoStepHoldTimer >= holdTime) {
+        finalizeDynoPull();
+      }
+    }
+  }
+
+  function finalizeDynoPull() {
+    dynoPullActive = false;
+    throttle = 0;
+    targetRpm = config.targetIdleRpm;
+
+    if (dynoCurrentRun.length === 0) return;
+
+    // SAE J1349 correction factor (simplified: altitude + temperature)
+    let corrFactor = 1.0;
+    if (dynoPullConfig.saeCorrectionEnabled) {
+      const altCorr = 1 + config.altitudeFt * 0.00003; // ~3% per 1000ft
+      const tempCorr = (config.ambientTempF + 459.67) / (77 + 459.67); // Rankine ratio vs 77°F reference
+      corrFactor = altCorr * Math.sqrt(tempCorr);
+    }
+
+    // Find peaks
+    let peakHp = 0, peakHpRpm = 0, peakTq = 0, peakTqFtLb = 0, peakTqRpm = 0;
+    for (const pt of dynoCurrentRun) {
+      const corrHp = pt.hp * corrFactor;
+      const corrTq = pt.torqueNm * corrFactor;
+      if (corrHp > peakHp) { peakHp = corrHp; peakHpRpm = pt.rpm; }
+      if (corrTq > peakTq) { peakTq = corrTq; peakTqFtLb = pt.torqueFtLb * corrFactor; peakTqRpm = pt.rpm; }
+    }
+
+    const run: DynoRun = {
+      id: `dyno_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: `Pull ${dynoRunHistory.length + 1}`,
+      timestamp: Date.now(),
+      startRpm: dynoPullConfig.startRpm,
+      endRpm: dynoPullConfig.endRpm,
+      peakHp: Math.round(peakHp * 10) / 10,
+      peakHpRpm: peakHpRpm,
+      peakTorqueNm: Math.round(peakTq * 10) / 10,
+      peakTorqueFtLb: Math.round(peakTqFtLb * 10) / 10,
+      peakTorqueRpm: peakTqRpm,
+      points: dynoCurrentRun.map(p => ({
+        ...p,
+        hp: Math.round(p.hp * corrFactor * 10) / 10,
+        torqueNm: Math.round(p.torqueNm * corrFactor * 10) / 10,
+        torqueFtLb: Math.round(p.torqueFtLb * corrFactor * 10) / 10,
+      })),
+      programType: dynoPullConfig.programType,
+      correctionFactor: Math.round(corrFactor * 10000) / 10000,
+    };
+
+    dynoRunHistory.push(run);
+    dynoCurrentRun = [];
+  }
+
+  function getDynoState() {
+    return {
+      dynoMode,
+      dynoPullActive,
+      dynoPullProgress,
+      dynoRpmTarget: Math.round(dynoRpmTarget),
+      dynoAbsorberTorqueNm: Math.round(dynoAbsorberTorqueNm),
+      dynoRunCount: dynoRunHistory.length,
+      dynoCurrentRunPoints: dynoCurrentRun.length,
+    };
+  }
+
+  function getDynoRunHistory(): DynoRun[] { return dynoRunHistory; }
+  function clearDynoRunHistory() { dynoRunHistory = []; }
+  function deleteDynoRun(id: string) { dynoRunHistory = dynoRunHistory.filter(r => r.id !== id); }
+
+  return {
+    update, setThrottle,
+    startQuarterMile, launchCar, resetQuarterMile,
+    startTopSpeedRun, resetTopSpeedRun,
+    isRunning: () => running,
+    setEcuConfig, getEcuConfig,
+    setAiCorrections, getAiCorrections,
+    setCustomTorqueMap, getCustomTorqueMap,
+    getRunTelemetry: () => runTelemetry,
+    clearRunTelemetry: () => { runTelemetry = []; },
+    // Dyno mode
+    setDynoMode, isDynoMode,
+    startDynoPull, abortDynoPull, freeDynoRev,
+    getDynoState, getDynoRunHistory, clearDynoRunHistory, deleteDynoRun,
+  };
 }

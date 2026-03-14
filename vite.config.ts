@@ -30,7 +30,9 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    host: "0.0.0.0",    // allow LAN access
     hmr: {
+      host: "192.168.4.104",  // tell HMR clients to connect to LAN IP, not localhost
       overlay: false,   // disable Vite's error overlay (WebGL failures in Simple Browser are handled by our ErrorBoundary)
     },
     fs: {

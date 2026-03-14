@@ -217,6 +217,35 @@
  */
 @layer utilities {
 
+  /* ── Range slider thumb — visible & touch-friendly on all platforms ── */
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid rgba(255,255,255,0.4);
+    cursor: pointer;
+    margin-top: -8px; /* center on 4px track */
+    box-shadow: 0 0 4px rgba(0,0,0,0.5);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid rgba(255,255,255,0.4);
+    cursor: pointer;
+    box-shadow: 0 0 4px rgba(0,0,0,0.5);
+  }
+  /* Enlarge touch target area on mobile */
+  input[type="range"] {
+    min-height: 44px;
+    padding: 20px 0;
+    touch-action: manipulation;
+  }
+
   /* Hide ugly search cancel button in Chrome until we can style it properly */
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;

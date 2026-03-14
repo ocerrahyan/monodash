@@ -1,0 +1,78 @@
+2026-03-02 12:54:25 -08:00: [2026-03-02T20:54:25.505Z] Watchdog started — monitoring server and ngrok tunnels
+2026-03-02 12:54:25 -08:00: [2026-03-02T20:54:25.507Z] Check interval: 30s | Failure threshold: 2 consecutive failures
+2026-03-02 12:54:35 -08:00: [2026-03-02T20:54:35.513Z] Server health check failed: connect ECONNREFUSED 127.0.0.1:5000
+2026-03-02 12:54:42 -08:00: [2026-03-02T20:54:42.293Z] Watchdog started — monitoring server and ngrok tunnels
+2026-03-02 12:54:42 -08:00: [2026-03-02T20:54:42.294Z] Check interval: 30s | Failure threshold: 2 consecutive failures
+2026-03-02 12:54:52 -08:00: [2026-03-02T20:54:52.302Z] Server health check failed: connect ECONNREFUSED 127.0.0.1:5000
+2026-03-02 12:55:11 -08:00: [2026-03-02T20:55:11.764Z] Watchdog started — monitoring server and ngrok tunnels
+2026-03-02 12:55:11 -08:00: [2026-03-02T20:55:11.765Z] Check interval: 30s | Failure threshold: 2 consecutive failures
+2026-03-02 13:00:50 -08:00: [2026-03-02T21:00:50.062Z] Watchdog started — monitoring server and ngrok tunnels
+2026-03-02 13:00:50 -08:00: [2026-03-02T21:00:50.071Z] Check interval: 30s | Failure threshold: 2 consecutive failures
+2026-03-03 13:24:26 -08:00: [2026-03-03T21:24:26.287Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-03 13:24:56 -08:00: [2026-03-03T21:24:56.292Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-03 13:24:56 -08:00: [2026-03-03T21:24:56.292Z] ngrok has been down for 2 checks — triggering service restart
+2026-03-03 13:24:56 -08:00: [2026-03-03T21:24:56.292Z] ⚠ Restarting ngrok Windows service...
+2026-03-03 13:24:56 -08:00: [2026-03-03T21:24:56.454Z] ✗ Failed to restart ngrok service: Command failed: net stop ngrok & net start ngrok
+2026-03-03 13:24:56 -08:00: The ngrok service is not started.
+2026-03-03 13:24:56 -08:00: 
+2026-03-03 13:24:56 -08:00: More help is available by typing NET HELPMSG 3521.
+2026-03-03 13:24:56 -08:00: 
+2026-03-03 13:24:56 -08:00: System error 5 has occurred.
+2026-03-03 13:24:56 -08:00: 
+2026-03-03 13:24:56 -08:00: Access is denied.
+2026-03-03 13:24:56 -08:00: 
+2026-03-03 13:24:56 -08:00: 
+2026-03-04 10:37:02 -08:00: [2026-03-04T18:37:02.672Z] Watchdog started — monitoring server and ngrok tunnels
+2026-03-04 10:37:02 -08:00: [2026-03-04T18:37:02.673Z] Check interval: 30s | Failure threshold: 2 consecutive failures
+2026-03-04 12:33:37 -08:00: [2026-03-04T20:33:37.704Z] Watchdog started — monitoring server and ngrok tunnels
+2026-03-04 12:33:37 -08:00: [2026-03-04T20:33:37.705Z] Check interval: 30s | Failure threshold: 2 consecutive failures
+2026-03-06 14:42:57 -08:00: [2026-03-06T22:42:57.263Z] Watchdog started — monitoring server and ngrok tunnels
+2026-03-06 14:42:57 -08:00: [2026-03-06T22:42:57.265Z] Check interval: 30s | Failure threshold: 2 consecutive failures
+2026-03-06 14:44:57 -08:00: [2026-03-06T22:44:57.305Z] Missing tunnels: carengine
+2026-03-06 15:06:27 -08:00: [2026-03-06T23:06:27.630Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 15:08:57 -08:00: [2026-03-06T23:08:57.663Z] Missing tunnels: carengine
+2026-03-06 15:22:57 -08:00: [2026-03-06T23:22:57.889Z] Missing tunnels: carengine
+2026-03-06 15:37:28 -08:00: [2026-03-06T23:37:28.091Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 15:38:28 -08:00: [2026-03-06T23:38:28.111Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 15:41:28 -08:00: [2026-03-06T23:41:28.157Z] Missing tunnels: carengine
+2026-03-06 15:47:58 -08:00: [2026-03-06T23:47:58.244Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 15:49:58 -08:00: [2026-03-06T23:49:58.266Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 15:55:28 -08:00: [2026-03-06T23:55:28.344Z] Missing tunnels: carengine
+2026-03-06 15:56:58 -08:00: [2026-03-06T23:56:58.378Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 16:03:58 -08:00: [2026-03-07T00:03:58.482Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 16:13:28 -08:00: [2026-03-07T00:13:28.671Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 16:15:58 -08:00: [2026-03-07T00:15:58.699Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 16:20:28 -08:00: [2026-03-07T00:20:28.760Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 16:23:28 -08:00: [2026-03-07T00:23:28.795Z] Missing tunnels: carengine
+2026-03-06 16:34:59 -08:00: [2026-03-07T00:34:59.022Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 16:35:59 -08:00: [2026-03-07T00:35:59.036Z] Missing tunnels: carengine
+2026-03-06 16:39:59 -08:00: [2026-03-07T00:39:59.105Z] Missing tunnels: carengine
+2026-03-06 16:42:29 -08:00: [2026-03-07T00:42:29.130Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 16:52:29 -08:00: [2026-03-07T00:52:29.257Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 16:53:59 -08:00: [2026-03-07T00:53:59.276Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-06 16:59:29 -08:00: [2026-03-07T00:59:29.344Z] Missing tunnels: carengine
+2026-03-08 10:08:31 -07:00: [2026-03-08T17:08:31.563Z] Watchdog started — monitoring server and ngrok tunnels
+2026-03-08 10:08:31 -07:00: [2026-03-08T17:08:31.564Z] Check interval: 30s | Failure threshold: 2 consecutive failures
+2026-03-08 14:05:11 -07:00: [2026-03-08T21:05:11.061Z] Watchdog started — monitoring server and ngrok tunnels
+2026-03-08 14:05:11 -07:00: [2026-03-08T21:05:11.062Z] Check interval: 30s | Failure threshold: 2 consecutive failures
+2026-03-08 14:06:35 -07:00: [2026-03-08T21:06:35.225Z] Watchdog started — monitoring server and ngrok tunnels
+2026-03-08 14:06:35 -07:00: [2026-03-08T21:06:35.226Z] Check interval: 30s | Failure threshold: 2 consecutive failures
+2026-03-08 14:11:05 -07:00: [2026-03-08T21:11:05.288Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-08 14:11:35 -07:00: [2026-03-08T21:11:35.300Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-08 14:11:35 -07:00: [2026-03-08T21:11:35.301Z] ngrok has been down for 2 checks — triggering service restart
+2026-03-08 14:11:35 -07:00: [2026-03-08T21:11:35.301Z] ⚠ Restarting ngrok Windows service...
+2026-03-08 14:11:35 -07:00: [2026-03-08T21:11:35.435Z] ✗ Failed to restart ngrok service: Command failed: net stop ngrok & net start ngrok
+2026-03-08 14:11:35 -07:00: System error 5 has occurred.
+2026-03-08 14:11:35 -07:00: 
+2026-03-08 14:11:35 -07:00: Access is denied.
+2026-03-08 14:11:35 -07:00: 
+2026-03-08 14:11:35 -07:00: System error 5 has occurred.
+2026-03-08 14:11:35 -07:00: 
+2026-03-08 14:11:35 -07:00: Access is denied.
+2026-03-08 14:11:35 -07:00: 
+2026-03-08 14:11:35 -07:00: 
+2026-03-08 14:20:05 -07:00: [2026-03-08T21:20:05.438Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040
+2026-03-08 14:21:35 -07:00: [2026-03-08T21:21:35.469Z] Missing tunnels: carengine
+2026-03-08 14:30:05 -07:00: [2026-03-08T21:30:05.588Z] Missing tunnels: carengine
+2026-03-08 14:38:35 -07:00: [2026-03-08T21:38:35.704Z] Missing tunnels: carengine
+2026-03-08 14:43:04 -07:00: [2026-03-08T21:43:04.029Z] ngrok health check failed: connect ECONNREFUSED 127.0.0.1:4040

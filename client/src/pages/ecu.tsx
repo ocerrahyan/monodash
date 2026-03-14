@@ -5,16 +5,19 @@ import { sharedSim } from "@/lib/sharedSim";
 import { getAllPresets, savePreset, deletePreset, type Preset, configToShareUrl, exportConfigToFile, importConfigFromFile, pushUndo, undo, redo, canUndo, canRedo, configFromShareUrl } from "@/lib/presets";
 import { useAiMode } from "@/lib/aiMode";
 import { log } from '@shared/logger';
+import { logConfigChange, logPresetLoad, logButtonPress, logFullConfig, logPageNav } from '@/lib/actionLogger';
+import { useTheme, useThemeMode, THEME_ICONS } from '@/lib/theme';
 
 type ConfigKey = keyof EcuConfig;
 
-function EditableNumberInput({ value, onCommit, step, min, className, testId }: {
+function EditableNumberInput({ value, onCommit, step, min, className, testId, style }: {
   value: number;
   onCommit: (v: number) => void;
   step?: number;
   min?: number;
   className?: string;
   testId?: string;
+  style?: React.CSSProperties;
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(String(value));
@@ -56,6 +59,7 @@ function EditableNumberInput({ value, onCommit, step, min, className, testId }: 
       }}
       step={step}
       className={className}
+      style={style}
       data-testid={testId}
     />
   );
@@ -74,19 +78,21 @@ interface ParamRowProps {
 
 function ParamRow({ label, configKey, config, onChange, unit, step = 1, min, testId }: ParamRowProps) {
   const value = config[configKey];
+  const t = useTheme();
 
   if (typeof value === "boolean") {
     return (
-      <div className="flex items-center justify-between py-1 px-2 border-b border-white/5" data-testid={testId}>
-        <span className="text-[10px] tracking-wide uppercase opacity-80 font-mono flex-1">{label}</span>
+      <div className="flex items-center justify-between py-1 px-2" style={{ borderBottom: `1px solid ${t.borderFaint}` }} data-testid={testId}>
+        <span className="text-[10px] tracking-wide uppercase font-mono flex-1" style={{ color: t.textMuted }}>{label}</span>
         <button
           onClick={() => onChange(configKey, !value)}
-          className="text-[11px] font-mono tabular-nums px-2 py-0.5 border border-white/30 bg-transparent text-white min-w-[50px] text-center"
+          className="text-[11px] font-mono tabular-nums px-2 py-0.5 min-w-[50px] text-center"
+          style={{ border: `1px solid ${t.border}`, background: t.inputBg, color: t.inputText }}
           data-testid={`toggle-${testId}`}
         >
           {value ? "ON" : "OFF"}
         </button>
-        {unit && <span className="text-[8px] opacity-60 font-mono ml-1 w-10 text-right">{unit}</span>}
+        {unit && <span className="text-[8px] font-mono ml-1 w-10 text-right" style={{ color: t.textDim }}>{unit}</span>}
       </div>
     );
   }
@@ -94,14 +100,15 @@ function ParamRow({ label, configKey, config, onChange, unit, step = 1, min, tes
   if (typeof value === "string") {
     const options = getStringOptions(configKey);
     return (
-      <div className="flex items-center justify-between py-1 px-2 border-b border-white/5" data-testid={testId}>
-        <span className="text-[10px] tracking-wide uppercase opacity-80 font-mono flex-1">{label}</span>
+      <div className="flex items-center justify-between py-1 px-2" style={{ borderBottom: `1px solid ${t.borderFaint}` }} data-testid={testId}>
+        <span className="text-[10px] tracking-wide uppercase font-mono flex-1" style={{ color: t.textMuted }}>{label}</span>
         <div className="flex gap-1">
           {options.map((opt) => (
             <button
               key={opt}
               onClick={() => onChange(configKey, opt)}
-              className={`text-[9px] font-mono px-1.5 py-0.5 border ${value === opt ? "border-white/70 text-white" : "border-white/25 text-white/50"}`}
+              className="text-[9px] font-mono px-1.5 py-0.5"
+              style={{ border: `1px solid ${value === opt ? t.activeBorder : t.inactiveBorder}`, color: value === opt ? t.activeText : t.inactiveText }}
               data-testid={`option-${testId}-${opt}`}
             >
               {opt.toUpperCase()}
@@ -113,15 +120,16 @@ function ParamRow({ label, configKey, config, onChange, unit, step = 1, min, tes
   }
 
   return (
-    <div className="flex items-center justify-between py-1 px-2 border-b border-white/5" data-testid={testId}>
-      <span className="text-[10px] tracking-wide uppercase opacity-80 font-mono flex-1">{label}</span>
+    <div className="flex items-center justify-between py-1 px-2" style={{ borderBottom: `1px solid ${t.borderFaint}` }} data-testid={testId}>
+      <span className="text-[10px] tracking-wide uppercase font-mono flex-1" style={{ color: t.textMuted }}>{label}</span>
       <div className="flex items-center gap-1">
         <button
           onClick={() => {
             const newVal = (value as number) - step;
             onChange(configKey, min !== undefined ? Math.max(min, newVal) : newVal);
           }}
-          className="text-[11px] font-mono px-1.5 py-0.5 border border-white/25 text-white/70 active:text-white"
+          className="text-[11px] font-mono px-1.5 py-0.5"
+          style={{ border: `1px solid ${t.inputBorder}`, color: t.textDim }}
           data-testid={`dec-${testId}`}
         >
           -
@@ -131,7 +139,8 @@ function ParamRow({ label, configKey, config, onChange, unit, step = 1, min, tes
           onCommit={(v) => onChange(configKey, v)}
           step={step}
           min={min}
-          className="bg-transparent text-white text-[11px] font-mono tabular-nums w-16 text-center border border-white/25 py-0.5 outline-none focus:border-white/50"
+          className="text-[11px] font-mono tabular-nums w-16 text-center py-0.5 outline-none"
+          style={{ background: t.inputBg, color: t.inputText, border: `1px solid ${t.inputBorder}` }}
           testId={`input-${testId}`}
         />
         <button
@@ -139,13 +148,14 @@ function ParamRow({ label, configKey, config, onChange, unit, step = 1, min, tes
             const newVal = (value as number) + step;
             onChange(configKey, newVal);
           }}
-          className="text-[11px] font-mono px-1.5 py-0.5 border border-white/25 text-white/70 active:text-white"
+          className="text-[11px] font-mono px-1.5 py-0.5"
+          style={{ border: `1px solid ${t.inputBorder}`, color: t.textDim }}
           data-testid={`inc-${testId}`}
         >
           +
         </button>
       </div>
-      {unit && <span className="text-[8px] opacity-60 font-mono ml-1 w-12 text-right">{unit}</span>}
+      {unit && <span className="text-[8px] font-mono ml-1 w-12 text-right" style={{ color: t.textDim }}>{unit}</span>}
     </div>
   );
 }
@@ -163,13 +173,14 @@ interface ArrayParamRowProps {
 
 function ArrayParamRow({ label, configKey, config, onChange, unit, step = 0.001, labels, testId }: ArrayParamRowProps) {
   const values = config[configKey] as number[];
+  const t = useTheme();
   return (
-    <div className="py-1 px-2 border-b border-white/5" data-testid={testId}>
-      <span className="text-[10px] tracking-wide uppercase opacity-80 font-mono block mb-1">{label}</span>
+    <div className="py-1 px-2" style={{ borderBottom: `1px solid ${t.borderFaint}` }} data-testid={testId}>
+      <span className="text-[10px] tracking-wide uppercase font-mono block mb-1" style={{ color: t.textMuted }}>{label}</span>
       <div className="flex gap-1 flex-wrap">
         {values.map((v, i) => (
           <div key={i} className="flex flex-col items-center">
-            <span className="text-[7px] opacity-60 font-mono">{labels[i] || `${i + 1}`}</span>
+            <span className="text-[7px] font-mono" style={{ color: t.textDim }}>{labels[i] || `${i + 1}`}</span>
             <EditableNumberInput
               value={v}
               onCommit={(newVal) => {
@@ -178,10 +189,11 @@ function ArrayParamRow({ label, configKey, config, onChange, unit, step = 0.001,
                 onChange(configKey, newArr);
               }}
               step={step}
-              className="bg-transparent text-white text-[10px] font-mono tabular-nums w-12 text-center border border-white/25 py-0.5 outline-none focus:border-white/50"
+              className="text-[10px] font-mono tabular-nums w-12 text-center py-0.5 outline-none"
+              style={{ background: t.inputBg, color: t.inputText, border: `1px solid ${t.inputBorder}` }}
               testId={`input-${testId}-${i}`}
             />
-            {unit && <span className="text-[7px] opacity-50 font-mono">{unit}</span>}
+            {unit && <span className="text-[7px] font-mono" style={{ color: t.textDim }}>{unit}</span>}
           </div>
         ))}
       </div>
@@ -233,11 +245,12 @@ function getStringOptions(key: ConfigKey): string[] {
 }
 
 function SectionHeader({ title }: { title: string }) {
+  const t = useTheme();
   return (
     <div className="flex items-center gap-2 pt-4 pb-1 px-2">
-      <div className="h-px flex-1 bg-white/20" />
-      <span className="text-[9px] tracking-[0.3em] uppercase opacity-60 font-mono whitespace-nowrap">{title}</span>
-      <div className="h-px flex-1 bg-white/20" />
+      <div className="h-px flex-1" style={{ background: t.border }} />
+      <span className="text-[9px] tracking-[0.3em] uppercase font-mono whitespace-nowrap" style={{ color: t.textDim }}>{title}</span>
+      <div className="h-px flex-1" style={{ background: t.border }} />
     </div>
   );
 }
@@ -251,6 +264,8 @@ export default function EcuPage() {
   const [saveMsg, setSaveMsg] = useState("");
   const [aiMode, toggleAi] = useAiMode();
   const [shareMsg, setShareMsg] = useState("");
+  const t = useTheme();
+  const [themeMode, cycleTheme] = useThemeMode();
 
   // Load config from share URL on mount
   useEffect(() => {
@@ -268,8 +283,14 @@ export default function EcuPage() {
     setPresets(getAllPresets());
   }, []);
 
+  // Log page navigation
+  useEffect(() => {
+    logPageNav('ecu');
+  }, []);
+
   const handleChange = useCallback((key: ConfigKey, value: any) => {
     setConfig((prev) => {
+      logConfigChange(key, prev[key], value, 'ecu');
       const next = { ...prev, [key]: value };
       if (key === "boostTargetPsi") {
         next.boostByGear = next.boostByGear.map(() => value as number);
@@ -314,12 +335,15 @@ export default function EcuPage() {
 
   const handleReset = useCallback(() => {
     const defaults = getDefaultEcuConfig();
+    logButtonPress('RESET TO DEFAULTS (ECU)');
+    logFullConfig(defaults as unknown as Record<string, unknown>, 'Reset ECU to factory defaults');
     setConfig(defaults);
     sharedSim.setEcuConfig(defaults);
     setActivePreset("Stock B16A2");
   }, []);
 
   const handleLoadPreset = useCallback((preset: Preset) => {
+    logPresetLoad(preset.name, preset.config as unknown as Record<string, unknown>);
     const newConfig = { ...preset.config };
     setConfig(newConfig);
     sharedSim.setEcuConfig(newConfig);
@@ -356,33 +380,36 @@ export default function EcuPage() {
   }, [refreshPresets, activePreset]);
 
   return (
-    <div className="fixed inset-0 bg-black text-white flex flex-col select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
-      <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-white/20 gap-2">
-        <Link href="/" className="text-[10px] tracking-wider uppercase opacity-70 font-mono" data-testid="link-dashboard">
+    <div className="fixed inset-0 flex flex-col select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)", background: t.bg, color: t.text }}>
+      <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b gap-2" style={{ borderColor: t.border }}>
+        <Link href="/" className="text-[10px] tracking-wider uppercase font-mono" style={{ color: t.textDim }} data-testid="link-dashboard">
           GAUGES
         </Link>
-        <Link href="/vehicle" className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-orange-500/40 text-orange-400/80 px-2 py-0.5" data-testid="link-vehicle">
+        <Link href="/vehicle" className="text-[10px] tracking-wider uppercase font-mono border border-orange-500/40 text-orange-400/80 px-2 py-0.5" data-testid="link-vehicle">
           VEHICLE
         </Link>
         <button
           onClick={toggleAi}
-          className={`text-[10px] tracking-wider uppercase font-mono border px-2 py-0.5 ${aiMode ? "border-green-500/60 text-green-400 opacity-100" : "border-white/25 opacity-70"}`}
+          className={`text-[10px] tracking-wider uppercase font-mono border px-2 py-0.5 ${aiMode ? "border-green-500/60 text-green-400 opacity-100" : ""}`}
+          style={aiMode ? undefined : { borderColor: t.inputBorder, color: t.textDim }}
           data-testid="button-ai-toggle-ecu"
         >
           {aiMode ? "AI ON" : "CODE"}
         </button>
-        <span className="text-[10px] tracking-[0.3em] uppercase opacity-80 font-mono text-green-400">ECU TUNING</span>
+        <span className="text-[10px] tracking-[0.3em] uppercase font-mono text-green-400" style={{ opacity: 0.8 }}>ECU TUNING</span>
         <div className="flex items-center gap-1">
-          <button onClick={handleUndo} disabled={!canUndo()} className="text-[10px] font-mono border border-white/20 px-1.5 py-0.5 opacity-60 hover:opacity-100 disabled:opacity-20" title="Undo (Ctrl+Z)">↩</button>
-          <button onClick={handleRedo} disabled={!canRedo()} className="text-[10px] font-mono border border-white/20 px-1.5 py-0.5 opacity-60 hover:opacity-100 disabled:opacity-20" title="Redo (Ctrl+Y)">↪</button>
+          <button onClick={handleUndo} disabled={!canUndo()} className="text-[10px] font-mono border px-1.5 py-0.5 hover:opacity-100 disabled:opacity-20" style={{ borderColor: t.borderFaint, color: t.textDim }} title="Undo (Ctrl+Z)">↩</button>
+          <button onClick={handleRedo} disabled={!canRedo()} className="text-[10px] font-mono border px-1.5 py-0.5 hover:opacity-100 disabled:opacity-20" style={{ borderColor: t.borderFaint, color: t.textDim }} title="Redo (Ctrl+Y)">↪</button>
           <button onClick={handleShare} className="text-[10px] font-mono border border-cyan-500/30 text-cyan-400/80 px-1.5 py-0.5" title="Copy share URL">🔗</button>
-          <button onClick={handleExport} className="text-[10px] font-mono border border-white/20 px-1.5 py-0.5 opacity-60 hover:opacity-100" title="Export JSON">⬇</button>
-          <button onClick={handleImport} className="text-[10px] font-mono border border-white/20 px-1.5 py-0.5 opacity-60 hover:opacity-100" title="Import JSON">⬆</button>
+          <button onClick={handleExport} className="text-[10px] font-mono border px-1.5 py-0.5 hover:opacity-100" style={{ borderColor: t.borderFaint, color: t.textDim }} title="Export JSON">⬇</button>
+          <button onClick={handleImport} className="text-[10px] font-mono border px-1.5 py-0.5 hover:opacity-100" style={{ borderColor: t.borderFaint, color: t.textDim }} title="Import JSON">⬆</button>
         </div>
         {shareMsg && <span className="text-[9px] font-mono text-cyan-400 animate-pulse">{shareMsg}</span>}
+        <button onClick={cycleTheme} className="text-[10px] font-mono border px-2 py-0.5" style={{ borderColor: t.inputBorder, color: t.textDim }} title="Toggle theme">{THEME_ICONS[themeMode]}</button>
         <button
           onClick={handleReset}
-          className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5"
+          className="text-[10px] tracking-wider uppercase font-mono border px-2 py-0.5"
+          style={{ borderColor: t.inputBorder, color: t.textDim }}
           data-testid="button-reset-defaults"
         >
           DEFAULTS
@@ -400,7 +427,8 @@ export default function EcuPage() {
                 <div key={p.name} className="flex items-center gap-0.5">
                   <button
                     onClick={() => handleLoadPreset(p)}
-                    className={`text-[9px] font-mono px-2 py-1 border ${isActive ? "border-green-500/60 text-green-400 bg-green-500/10" : "border-white/25 text-white/80"} active:text-white`}
+                    className={`text-[9px] font-mono px-2 py-1 border ${isActive ? "border-green-500/60 text-green-400 bg-green-500/10" : ""} active:text-white`}
+                    style={isActive ? undefined : { borderColor: t.inputBorder, color: t.textMuted }}
                     data-testid={`preset-load-${p.name.replace(/\s+/g, '-').toLowerCase()}`}
                   >
                     {p.name.toUpperCase()}
@@ -408,7 +436,8 @@ export default function EcuPage() {
                   {!p.builtIn && (
                     <button
                       onClick={() => handleDeletePreset(p.name)}
-                      className="text-[9px] font-mono px-1 py-1 border border-white/15 text-white/40 active:text-white"
+                      className="text-[9px] font-mono px-1 py-1 border"
+                      style={{ borderColor: t.borderFaint, color: t.textDim }}
                       data-testid={`preset-delete-${p.name.replace(/\s+/g, '-').toLowerCase()}`}
                     >
                       X
@@ -436,20 +465,23 @@ export default function EcuPage() {
                   onChange={(e) => setSaveName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") handleSavePreset(); }}
                   placeholder="Preset name..."
-                  className="bg-transparent text-white text-[10px] font-mono border border-white/30 px-2 py-1 flex-1 outline-none focus:border-white/60"
+                  className="text-[10px] font-mono border px-2 py-1 flex-1 outline-none"
+                  style={{ background: t.inputBg, color: t.inputText, borderColor: t.inputBorder }}
                   autoFocus
                   data-testid="input-preset-name"
                 />
                 <button
                   onClick={handleSavePreset}
-                  className="text-[9px] font-mono px-2 py-1 border border-white/30 text-white/80"
+                  className="text-[9px] font-mono px-2 py-1 border"
+                  style={{ borderColor: t.inputBorder, color: t.textMuted }}
                   data-testid="button-preset-save-confirm"
                 >
                   SAVE
                 </button>
                 <button
                   onClick={() => { setShowSave(false); setSaveName(""); }}
-                  className="text-[9px] font-mono px-2 py-1 border border-white/15 text-white/50"
+                  className="text-[9px] font-mono px-2 py-1 border"
+                  style={{ borderColor: t.borderFaint, color: t.textDim }}
                   data-testid="button-preset-save-cancel"
                 >
                   CANCEL
@@ -458,7 +490,8 @@ export default function EcuPage() {
             ) : (
               <button
                 onClick={() => setShowSave(true)}
-                className="text-[9px] font-mono px-2 py-1 border border-white/25 text-white/70 active:text-white flex-1"
+                className="text-[9px] font-mono px-2 py-1 border flex-1"
+                style={{ borderColor: t.inputBorder, color: t.textDim }}
                 data-testid="button-save-preset"
               >
                 SAVE AS NEW
@@ -466,7 +499,7 @@ export default function EcuPage() {
             )}
           </div>
           {saveMsg && (
-            <div className="text-[9px] font-mono text-white/60 mt-1 text-center" data-testid="text-save-msg">
+            <div className="text-[9px] font-mono mt-1 text-center" style={{ color: t.textDim }} data-testid="text-save-msg">
               {saveMsg}
             </div>
           )}
@@ -626,6 +659,72 @@ export default function EcuPage() {
         <ParamRow label="Shift Light RPM" configKey="shiftLightRpm" config={config} onChange={handleChange} unit="rpm" step={100} min={4000} testId="ecu-shift-light" />
         <ParamRow label="Shift Flash RPM" configKey="shiftLightFlashRpm" config={config} onChange={handleChange} unit="rpm" step={100} min={4000} testId="ecu-shift-flash" />
 
+        <SectionHeader title="Custom Shift Points" />
+        <ParamRow label="Custom Shift Points" configKey="customShiftPointsEnabled" config={config} onChange={handleChange} testId="ecu-csp-enabled" />
+        {config.customShiftPointsEnabled && (
+          <>
+            <div className="flex items-center justify-between px-3 py-1.5 text-[10px] font-mono">
+              <span style={{ color: t.textDim }}>Mode</span>
+              <div className="flex gap-1">
+                <button
+                  className={`px-2 py-0.5 rounded text-[9px] border ${config.customShiftPointsMode === 'rpm' ? 'border-lime-400/60 text-lime-400 bg-lime-400/10' : ''}`}
+                  style={config.customShiftPointsMode === 'rpm' ? undefined : { borderColor: t.borderFaint, color: t.textDim }}
+                  onClick={() => handleChange('customShiftPointsMode', 'rpm')}
+                  data-testid="ecu-csp-mode-rpm"
+                >
+                  RPM
+                </button>
+                <button
+                  className={`px-2 py-0.5 rounded text-[9px] border ${config.customShiftPointsMode === 'speed' ? 'border-lime-400/60 text-lime-400 bg-lime-400/10' : ''}`}
+                  style={config.customShiftPointsMode === 'speed' ? undefined : { borderColor: t.borderFaint, color: t.textDim }}
+                  onClick={() => handleChange('customShiftPointsMode', 'speed')}
+                  data-testid="ecu-csp-mode-speed"
+                >
+                  SPEED
+                </button>
+                <button
+                  className={`px-2 py-0.5 rounded text-[9px] border ${config.customShiftPointsMode === 'wheel_speed' ? 'border-lime-400/60 text-lime-400 bg-lime-400/10' : ''}`}
+                  style={config.customShiftPointsMode === 'wheel_speed' ? undefined : { borderColor: t.borderFaint, color: t.textDim }}
+                  onClick={() => handleChange('customShiftPointsMode', 'wheel_speed')}
+                  data-testid="ecu-csp-mode-wheel-speed"
+                >
+                  WHEEL SPD
+                </button>
+              </div>
+            </div>
+            {config.gearRatios.slice(0, -1).map((_, i) => {
+              const isRpm = config.customShiftPointsMode === 'rpm';
+              const isWheelSpeed = config.customShiftPointsMode === 'wheel_speed';
+              const values = isRpm ? config.customShiftPointsRpm : isWheelSpeed ? config.customShiftPointsWheelSpeedMph : config.customShiftPointsMph;
+              const configKey = isRpm ? 'customShiftPointsRpm' : isWheelSpeed ? 'customShiftPointsWheelSpeedMph' : 'customShiftPointsMph';
+              const currentVal = values[i] ?? (isRpm ? 7800 : 50);
+              return (
+                <div key={`csp-${i}`} className="flex items-center justify-between px-3 py-1 text-[10px] font-mono">
+                  <span style={{ color: t.textDim }}>{i + 1}→{i + 2} Shift</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={currentVal}
+                      onChange={(e) => {
+                        const newArr = [...values];
+                        newArr[i] = parseFloat(e.target.value) || currentVal;
+                        handleChange(configKey, newArr);
+                      }}
+                      step={isRpm ? 100 : 5}
+                      min={isRpm ? 3000 : 10}
+                      max={isRpm ? 9000 : 200}
+                      className="w-[70px] rounded px-1.5 py-0.5 text-right text-[10px] font-mono"
+                      style={{ background: t.inputBg, border: '1px solid ' + t.borderFaint, color: t.textMuted }}
+                      data-testid={`ecu-csp-${i}`}
+                    />
+                    <span className="text-[9px]" style={{ color: t.textDim }}>{isRpm ? 'rpm' : 'mph'}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
+
         <SectionHeader title="Oil Monitoring" />
         <ParamRow label="Oil Pressure Sensor" configKey="oilPressureSensorEnabled" config={config} onChange={handleChange} testId="ecu-oil-press-en" />
         <ParamRow label="Min Oil Pressure" configKey="oilPressureMinPsi" config={config} onChange={handleChange} unit="psi" step={1} min={5} testId="ecu-oil-press-min" />
@@ -731,21 +830,22 @@ export default function EcuPage() {
 
         {/* ── VEHICLE / DRIVETRAIN CONFIG LINK ── */}
         <div className="flex items-center gap-2 pt-6 pb-2 px-2">
-          <div className="h-px flex-1 bg-orange-500/30" />
+          <div className="h-px flex-1" style={{ background: t.border }} />
           <Link href="/vehicle" className="text-[10px] tracking-[0.2em] uppercase font-mono text-orange-400 border border-orange-500/40 px-4 py-1.5 hover:bg-orange-500/10">
             VEHICLE &amp; DRIVETRAIN CONFIG →
           </Link>
-          <div className="h-px flex-1 bg-orange-500/30" />
+          <div className="h-px flex-1" style={{ background: t.border }} />
         </div>
 
         <div className="h-6" />
       </div>
 
-      <div className="shrink-0 px-3 py-2 border-t border-white/10 bg-black flex items-center justify-between gap-2">
-        <span className="text-[9px] tracking-wider uppercase opacity-30 font-mono">{saveMsg || "CHANGES APPLY IN REAL-TIME"}</span>
+      <div className="shrink-0 px-3 py-2 border-t flex items-center justify-between gap-2" style={{ borderColor: t.borderFaint, background: t.bottomBg }}>
+        <span className="text-[9px] tracking-wider uppercase font-mono" style={{ color: t.textDim, opacity: saveMsg ? 1 : 0.5 }}>{saveMsg || "CHANGES APPLY IN REAL-TIME"}</span>
         <button
           onClick={handleReset}
-          className="text-[9px] tracking-wider uppercase opacity-40 font-mono border border-white/15 px-2 py-0.5"
+          className="text-[9px] tracking-wider uppercase font-mono border px-2 py-0.5"
+          style={{ borderColor: t.borderFaint, color: t.textDim }}
           data-testid="button-reset-bottom"
         >
           RESET ALL

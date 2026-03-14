@@ -2,14 +2,21 @@ import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState, useCallback } from "react";
+import { AuthProvider } from "@/lib/auth";
 import Dashboard from "@/pages/dashboard";
 import EcuPage from "@/pages/ecu";
 import VehiclePage from "@/pages/vehicle";
 import ExportPage from "@/pages/export";
+import AuthPage from "@/pages/auth";
+import FriendsPage from "@/pages/friends";
+import RacePage from "@/pages/race";
+import AdminPage from "@/pages/admin";
 import { FloatingCommandPanel } from "@/components/FloatingCommandPanel";
+import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { sharedSim } from "@/lib/sharedSim";
 import { type EcuConfig } from "@/lib/engineSim";
 import { log } from "@shared/logger";
+import { ThemeProvider } from "@/lib/theme";
 
 function Router() {
   return (
@@ -18,6 +25,10 @@ function Router() {
       <Route path="/ecu" component={EcuPage} />
       <Route path="/vehicle" component={VehiclePage} />
       <Route path="/export" component={ExportPage} />
+      <Route path="/auth" component={AuthPage} />
+      <Route path="/friends" component={FriendsPage} />
+      <Route path="/race/:id" component={RacePage} />
+      <Route path="/admin" component={AdminPage} />
     </Switch>
   );
 }
@@ -33,11 +44,16 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Router />
-      <FloatingCommandPanel
-        ecuConfig={ecuConfig}
-        onConfigChange={handleConfigChange}
-      />
+      <AuthProvider>
+          <ThemeProvider>
+            <Router />
+            <FloatingCommandPanel
+              ecuConfig={ecuConfig}
+              onConfigChange={handleConfigChange}
+            />
+            <ConnectionStatus pollInterval={15000} failureThreshold={2} />
+          </ThemeProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

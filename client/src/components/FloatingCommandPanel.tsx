@@ -13,6 +13,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { type EcuConfig, getDefaultEcuConfig } from '@/lib/engineSim';
 import { autoTune, getDefaultConstraints, type AutoTuneGoal, type TargetType, type AutoTuneConstraints, type AutoTuneResult } from '@/lib/autoTune';
 import { log, getLogBuffer, onLogEntry, type LogEntry } from '@shared/logger';
+import { useTheme } from '@/lib/theme';
 
 // ── Setting metadata for search ─────────────────────────────────────────
 interface SettingMeta {
@@ -158,25 +159,12 @@ function formatChangeValue(val: unknown): string {
 // ── Styles ─────────────────────────────────────────────────────────────
 const panelBase: React.CSSProperties = {
   position: 'fixed',
-  top: 8,
-  right: 8,
+  bottom: 60,
+  left: 8,
   zIndex: 9999,
   fontFamily: "'JetBrains Mono', monospace",
   fontSize: 11,
-  color: '#ccc',
   userSelect: 'none',
-};
-
-const panelExpanded: React.CSSProperties = {
-  ...panelBase,
-  width: 420,
-  maxHeight: '80vh',
-  background: 'rgba(10, 10, 26, 0.95)',
-  borderRadius: 12,
-  border: '1px solid rgba(163, 230, 53, 0.25)',
-  boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 12px rgba(163, 230, 53, 0.08)',
-  backdropFilter: 'blur(12px)',
-  overflow: 'hidden',
 };
 
 const panelMinimized: React.CSSProperties = {
@@ -184,10 +172,13 @@ const panelMinimized: React.CSSProperties = {
   cursor: 'pointer',
 };
 
+// panelExpanded is computed inside the component using theme colors
+
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
 export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavigate }: FloatingPanelProps) {
+  const t = useTheme();
   const [minimized, setMinimized] = useState(true);
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<'search' | 'autotune' | 'logs'>('search');
@@ -333,14 +324,15 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
         title="Open Command Panel (Search, AI, Auto-Tune)"
       >
         <div style={{
-          background: 'rgba(10, 10, 26, 0.92)',
-          border: '1px solid rgba(163, 230, 53, 0.3)',
+          background: t.navBg,
+          border: `1px solid rgba(163, 230, 53, 0.3)`,
           borderRadius: 8,
           padding: '6px 14px',
           display: 'flex',
           alignItems: 'center',
           gap: 8,
           fontSize: 11,
+          color: t.text,
           boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
           backdropFilter: 'blur(8px)',
         }}>
@@ -362,8 +354,23 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
   }
 
   // ── Expanded panel ─────────────────────────────────────────────────
+  const panelExpandedStyle: React.CSSProperties = {
+    ...panelBase,
+    bottom: 60,
+    width: 420,
+    maxWidth: 'calc(100vw - 16px)',
+    maxHeight: 'calc(100vh - 120px)',
+    background: t.navBg,
+    color: t.text,
+    borderRadius: 12,
+    border: '1px solid rgba(163, 230, 53, 0.25)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 12px rgba(163, 230, 53, 0.08)',
+    backdropFilter: 'blur(12px)',
+    overflow: 'hidden',
+  };
+
   return (
-    <div style={panelExpanded}>
+    <div style={panelExpandedStyle}>
       {/* Header */}
       <div style={{
         display: 'flex',
@@ -377,14 +384,14 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
           <span style={{ color: '#a3e635', fontWeight: 600, fontSize: 12 }}>COMMAND PANEL</span>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
-          {(['search', 'autotune', 'logs'] as const).map(t => (
+          {(['search', 'autotune', 'logs'] as const).map(tb => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={tb}
+              onClick={() => setTab(tb)}
               style={{
-                background: tab === t ? 'rgba(163, 230, 53, 0.15)' : 'transparent',
-                color: tab === t ? '#a3e635' : '#666',
-                border: '1px solid ' + (tab === t ? 'rgba(163, 230, 53, 0.3)' : '#333'),
+                background: tab === tb ? 'rgba(163, 230, 53, 0.15)' : 'transparent',
+                color: tab === tb ? '#a3e635' : t.textDim,
+                border: `1px solid ${tab === tb ? 'rgba(163, 230, 53, 0.3)' : t.border}`,
                 borderRadius: 4,
                 padding: '2px 8px',
                 fontSize: 10,
@@ -392,15 +399,15 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                 fontFamily: 'inherit',
               }}
             >
-              {t === 'search' ? '🔎 Search' : t === 'autotune' ? '🎯 Tune' : '📋 Logs'}
+              {tb === 'search' ? '🔎 Search' : tb === 'autotune' ? '🎯 Tune' : '📋 Logs'}
             </button>
           ))}
           <button
             onClick={() => setMinimized(true)}
             style={{
               background: 'transparent',
-              color: '#888',
-              border: '1px solid #333',
+              color: t.textDim,
+              border: `1px solid ${t.border}`,
               borderRadius: 4,
               padding: '2px 8px',
               fontSize: 12,
@@ -414,7 +421,7 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
       </div>
 
       {/* Search / Command input */}
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid rgba(163, 230, 53, 0.08)' }}>
+      <div style={{ padding: '8px 12px', borderBottom: `1px solid ${t.borderFaint}` }}>
         <div style={{ display: 'flex', gap: 6 }}>
           <input
             ref={inputRef}
@@ -424,11 +431,11 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
             placeholder={tab === 'search' ? 'Search settings... or type a command' : 'e.g. "10 second quarter mile on pump gas"'}
             style={{
               flex: 1,
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid #333',
+              background: t.inputBg,
+              border: `1px solid ${t.inputBorder}`,
               borderRadius: 6,
               padding: '6px 10px',
-              color: '#eee',
+              color: t.inputText,
               fontSize: 11,
               fontFamily: 'inherit',
               outline: 'none',
@@ -450,7 +457,7 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
             ⏎
           </button>
         </div>
-        <div style={{ fontSize: 9, color: '#555', marginTop: 4 }}>
+        <div style={{ fontSize: 9, color: t.textDim, marginTop: 4 }}>
           💡 Try: "300hp turbo on pump gas" · "10s quarter mile" · "150 mph top speed"
         </div>
       </div>
@@ -462,19 +469,19 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
         {tab === 'search' && (
           <div>
             {searchResults.length === 0 && query.trim() && (
-              <div style={{ padding: '20px 12px', textAlign: 'center', color: '#555' }}>
+              <div style={{ padding: '20px 12px', textAlign: 'center', color: t.textDim }}>
                 No matching settings. Try a different search term.
               </div>
             )}
             {searchResults.length === 0 && !query.trim() && (
-              <div style={{ padding: '12px', color: '#555', lineHeight: 1.6 }}>
-                <div style={{ color: '#888', marginBottom: 8 }}>Start typing to search any setting:</div>
+              <div style={{ padding: '12px', color: t.textDim, lineHeight: 1.6 }}>
+                <div style={{ color: t.textMuted, marginBottom: 8 }}>Start typing to search any setting:</div>
                 <div>• <span style={{ color: '#a3e635' }}>boost</span> — turbo boost settings</div>
                 <div>• <span style={{ color: '#a3e635' }}>gear</span> — gear ratios, final drive</div>
                 <div>• <span style={{ color: '#a3e635' }}>fuel</span> — injectors, AFR, fuel type</div>
                 <div>• <span style={{ color: '#a3e635' }}>vtec</span> — VTEC cam profiles</div>
                 <div>• <span style={{ color: '#a3e635' }}>tire</span> — tires, grip, compound</div>
-                <div style={{ marginTop: 8, color: '#666', fontSize: 10 }}>
+                <div style={{ marginTop: 8, color: t.textDim, fontSize: 10 }}>
                   Or type a command like "250hp all motor" and press Enter
                 </div>
               </div>
@@ -502,8 +509,8 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                   }}
                 >
                   <div style={{ flex: 1 }}>
-                    <div style={{ color: '#ddd', fontSize: 11 }}>{s.label}</div>
-                    <div style={{ color: '#555', fontSize: 9 }}>{s.category} · {s.key}</div>
+                    <div style={{ color: t.text, fontSize: 11 }}>{s.label}</div>
+                    <div style={{ color: t.textDim, fontSize: 9 }}>{s.category} · {s.key}</div>
                   </div>
                   {isEditing ? (
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -512,8 +519,8 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                           value={String(val)}
                           onChange={e => handleSettingChange(s.key, e.target.value)}
                           style={{
-                            background: '#1a1a2e',
-                            color: '#eee',
+                            background: t.selectBg,
+                            color: t.inputText,
                             border: '1px solid #a3e635',
                             borderRadius: 4,
                             padding: '2px 6px',
@@ -536,8 +543,8 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                           onBlur={() => handleSettingChange(s.key, editValue)}
                           style={{
                             width: 80,
-                            background: '#1a1a2e',
-                            color: '#eee',
+                            background: t.selectBg,
+                            color: t.inputText,
                             border: '1px solid #a3e635',
                             borderRadius: 4,
                             padding: '2px 6px',
@@ -550,7 +557,7 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                     </div>
                   ) : (
                     <span style={{
-                      color: typeof val === 'boolean' ? (val ? '#a3e635' : '#666') : '#4ade80',
+                      color: typeof val === 'boolean' ? (val ? '#a3e635' : t.textDim) : '#4ade80',
                       fontSize: 10,
                       fontWeight: 600,
                       minWidth: 60,
@@ -570,7 +577,7 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
           <div style={{ padding: '8px 12px' }}>
             {/* Target selection */}
             <div style={{ marginBottom: 8 }}>
-              <div style={{ color: '#888', fontSize: 10, marginBottom: 4 }}>TARGET</div>
+              <div style={{ color: t.textMuted, fontSize: 10, marginBottom: 4 }}>TARGET</div>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                 {([
                   ['quarter_mile', '1/4 Mile (s)'],
@@ -582,9 +589,9 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                     key={type}
                     onClick={() => setAutoTuneTargetType(type)}
                     style={{
-                      background: autoTuneTargetType === type ? 'rgba(163, 230, 53, 0.2)' : 'rgba(255,255,255,0.03)',
-                      color: autoTuneTargetType === type ? '#a3e635' : '#888',
-                      border: '1px solid ' + (autoTuneTargetType === type ? 'rgba(163, 230, 53, 0.4)' : '#333'),
+                      background: autoTuneTargetType === type ? 'rgba(163, 230, 53, 0.2)' : t.cardBg,
+                      color: autoTuneTargetType === type ? '#a3e635' : t.textMuted,
+                      border: `1px solid ${autoTuneTargetType === type ? 'rgba(163, 230, 53, 0.4)' : t.border}`,
                       borderRadius: 4,
                       padding: '3px 8px',
                       fontSize: 10,
@@ -606,18 +613,18 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                 onKeyDown={e => e.key === 'Enter' && runAutoTune()}
                 style={{
                   width: 100,
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid #444',
+                  background: t.inputBg,
+                  border: `1px solid ${t.inputBorder}`,
                   borderRadius: 4,
                   padding: '4px 8px',
-                  color: '#eee',
+                  color: t.inputText,
                   fontSize: 14,
                   fontFamily: 'inherit',
                   fontWeight: 700,
                   textAlign: 'center',
                 }}
               />
-              <span style={{ color: '#666', fontSize: 10 }}>
+              <span style={{ color: t.textDim, fontSize: 10 }}>
                 {autoTuneTargetType === 'quarter_mile' ? 'seconds' :
                  autoTuneTargetType === 'horsepower' ? 'HP' :
                  autoTuneTargetType === 'torque' ? 'ft-lb' : 'MPH'}
@@ -643,7 +650,7 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
 
             {/* Constraints */}
             <div style={{ marginBottom: 8 }}>
-              <div style={{ color: '#888', fontSize: 10, marginBottom: 4 }}>CONSTRAINTS</div>
+              <div style={{ color: t.textMuted, fontSize: 10, marginBottom: 4 }}>CONSTRAINTS</div>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                 {([
                   ['pumpGasOnly', '⛽ Pump Gas'],
@@ -657,9 +664,9 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                     key={key}
                     onClick={() => setConstraints(prev => ({ ...prev, [key]: !prev[key] }))}
                     style={{
-                      background: constraints[key] ? 'rgba(163, 230, 53, 0.15)' : 'rgba(255,255,255,0.03)',
-                      color: constraints[key] ? '#a3e635' : '#666',
-                      border: '1px solid ' + (constraints[key] ? 'rgba(163, 230, 53, 0.3)' : '#333'),
+                      background: constraints[key] ? 'rgba(163, 230, 53, 0.15)' : t.cardBg,
+                      color: constraints[key] ? '#a3e635' : t.textDim,
+                      border: `1px solid ${constraints[key] ? 'rgba(163, 230, 53, 0.3)' : t.border}`,
                       borderRadius: 4,
                       padding: '2px 8px',
                       fontSize: 9,
@@ -696,7 +703,7 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                     <span style={{ color: '#a3e635', fontWeight: 700, fontSize: 11 }}>
                       ✅ AUTO-TUNE APPLIED — {autoTuneResult.changes.length} changes
                     </span>
-                    <span style={{ color: '#888', fontSize: 9 }}>
+                    <span style={{ color: t.textDim, fontSize: 9 }}>
                       Target: {autoTuneResult.estimatedQuarterMile}s QM · {autoTuneResult.estimatedHp} HP
                     </span>
                   </div>
@@ -713,25 +720,25 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                     <div style={{ fontSize: 18, fontWeight: 700, color: '#a3e635' }}>
                       {autoTuneResult.estimatedHp}
                     </div>
-                    <div style={{ fontSize: 9, color: '#666' }}>EST. HP</div>
+                    <div style={{ fontSize: 9, color: t.textDim }}>EST. HP</div>
                   </div>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 18, fontWeight: 700, color: '#4ade80' }}>
                       {autoTuneResult.estimatedTorque}
                     </div>
-                    <div style={{ fontSize: 9, color: '#666' }}>EST. FT-LB</div>
+                    <div style={{ fontSize: 9, color: t.textDim }}>EST. FT-LB</div>
                   </div>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 18, fontWeight: 700, color: '#38bdf8' }}>
                       {autoTuneResult.estimatedQuarterMile}s
                     </div>
-                    <div style={{ fontSize: 9, color: '#666' }}>EST. 1/4 MILE</div>
+                    <div style={{ fontSize: 9, color: t.textDim }}>EST. 1/4 MILE</div>
                   </div>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 18, fontWeight: 700, color: '#c084fc' }}>
                       {autoTuneResult.estimatedTopSpeed}
                     </div>
-                    <div style={{ fontSize: 9, color: '#666' }}>EST. TOP MPH</div>
+                    <div style={{ fontSize: 9, color: t.textDim }}>EST. TOP MPH</div>
                   </div>
                 </div>
 
@@ -740,7 +747,7 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                   onClick={() => setChangesExpanded(!changesExpanded)}
                   style={{
                     fontSize: 10,
-                    color: '#888',
+                    color: t.textMuted,
                     marginBottom: 4,
                     cursor: 'pointer',
                     display: 'flex',
@@ -752,12 +759,12 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                   }}
                 >
                   <span>
-                    <span style={{ color: changesExpanded ? '#a3e635' : '#666', marginRight: 4 }}>
+                    <span style={{ color: changesExpanded ? '#a3e635' : t.textDim, marginRight: 4 }}>
                       {changesExpanded ? '▼' : '▶'}
                     </span>
                     {autoTuneResult.changes.length} settings changed · {autoTuneResult.feasible ? '✅ Feasible' : '⚠️ May not reach target'}
                   </span>
-                  <span style={{ color: '#555', fontSize: 9 }}>
+                  <span style={{ color: t.textDim, fontSize: 9 }}>
                     {changesExpanded ? 'click to collapse' : 'click to expand'}
                   </span>
                 </div>
@@ -803,14 +810,14 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                               }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                                   <span style={{ color: '#4ade80', fontWeight: 600 }}>{fieldLabel}</span>
-                                  <span style={{ color: '#666', whiteSpace: 'nowrap' }}>
+                                    <span style={{ color: t.textDim, whiteSpace: 'nowrap' }}>
                                     <span style={{ color: '#ef4444', opacity: 0.7 }}>{fromStr}</span>
-                                    <span style={{ color: '#555', margin: '0 4px' }}>→</span>
+                                    <span style={{ color: t.textDim, margin: '0 4px' }}>→</span>
                                     <span style={{ color: '#a3e635', fontWeight: 600 }}>{toStr}</span>
                                   </span>
                                 </div>
                                 {ch.reason && (
-                                  <div style={{ color: '#555', fontSize: 8, marginTop: 1, fontStyle: 'italic' }}>
+                                  <div style={{ color: t.textDim, fontSize: 8, marginTop: 1, fontStyle: 'italic' }}>
                                     {ch.reason}
                                   </div>
                                 )}
@@ -832,7 +839,7 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                     marginBottom: 6,
                   }}>
                     {autoTuneResult.notes.map((note, i) => (
-                      <div key={i} style={{ fontSize: 9, color: note.startsWith('⚠') ? '#fbbf24' : '#888', marginBottom: 2 }}>
+                      <div key={i} style={{ fontSize: 9, color: note.startsWith('⚠') ? '#fbbf24' : t.textMuted, marginBottom: 2 }}>
                         {note}
                       </div>
                     ))}
@@ -891,7 +898,7 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
         {tab === 'logs' && (
           <div style={{ padding: '4px 0' }}>
             {logEntries.length === 0 && (
-              <div style={{ padding: 20, textAlign: 'center', color: '#555' }}>No log entries yet.</div>
+              <div style={{ padding: 20, textAlign: 'center', color: t.textDim }}>No log entries yet.</div>
             )}
             {logEntries.map((entry, i) => (
               <div key={i} style={{
@@ -901,11 +908,11 @@ export function FloatingCommandPanel({ ecuConfig, onConfigChange, onSettingNavig
                 borderBottom: '1px solid rgba(255,255,255,0.02)',
                 color: entry.level === 'error' ? '#ef4444' :
                        entry.level === 'warn' ? '#fbbf24' :
-                       entry.level === 'info' ? '#4ade80' : '#666',
+                       entry.level === 'info' ? '#4ade80' : t.textDim,
               }}>
-                <span style={{ color: '#444' }}>{entry.iso.slice(11, 23)}</span>
+                <span style={{ color: t.textDim }}>{entry.iso.slice(11, 23)}</span>
                 {' '}
-                <span style={{ color: '#888' }}>[{entry.module}]</span>
+                <span style={{ color: t.textMuted }}>[{entry.module}]</span>
                 {' '}
                 {entry.message}
               </div>

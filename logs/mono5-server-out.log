@@ -1,0 +1,127 @@
+2026-03-02 12:55:12 -08:00: [20:55:12.478] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+2026-03-02 12:55:12 -08:00: [20:55:12.479] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+2026-03-02 12:55:12 -08:00: [20:55:12.479] ℹ️ [auth] Auth system initialized (dev mode)
+2026-03-02 12:55:12 -08:00: [20:55:12.480] ℹ️ [storage] Admin user seeded
+2026-03-02 12:55:12 -08:00: [20:55:12.480] ℹ️ [raceServer] WebSocket race server started at /ws/race
+2026-03-02 12:55:12 -08:00: [server] Vite dev server initialized
+2026-03-02 12:55:12 -08:00: 12:55:12 PM [express] serving on port 5000
+2026-03-02 13:00:50 -08:00: [21:00:50.752] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+2026-03-02 13:00:50 -08:00: [21:00:50.753] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+2026-03-02 13:00:50 -08:00: [21:00:50.753] ℹ️ [auth] Auth system initialized (dev mode)
+2026-03-02 13:00:50 -08:00: [21:00:50.754] ℹ️ [storage] Admin user seeded
+2026-03-02 13:00:50 -08:00: [21:00:50.755] ℹ️ [raceServer] WebSocket race server started at /ws/race
+2026-03-02 13:00:51 -08:00: [server] Vite dev server initialized
+2026-03-02 13:00:51 -08:00: 1:00:51 PM [express] serving on port 5000
+2026-03-02 15:10:36 -08:00: 3:10:36 PM [express] GET /api/notifications 304 in 2ms :: {"notifications":[],"unreadCount":0}
+2026-03-02 15:10:36 -08:00: 3:10:36 PM [express] GET /api/health 200 in 1ms :: {"status":"healthy","uptime":7785651,"uptimeHuman":"2h 9m","memory":{"heapUsedMB":118,"heapTotalMB":137,"rssMB":245},"timestamp":"2026-03-02T23:10:36.405Z"}
+2026-03-02 15:10:36 -08:00: [23:10:36.440] 🔍 [actionLogStorage] Wrote 1 entries to 2026-03-02_151036_mdc8 (total: 1)
+2026-03-02 15:10:36 -08:00: 3:10:36 PM [express] POST /api/action-logs 200 in 1ms :: {"ok":true,"count":1}
+2026-03-02 15:10:37 -08:00: [23:10:37.955] 🔍 [actionLogStorage] Wrote 2 entries to 2026-03-02_151036_mdc8 (total: 3)
+2026-03-02 15:10:37 -08:00: 3:10:37 PM [express] POST /api/action-logs 200 in 1ms :: {"ok":true,"count":2}
+2026-03-02 15:44:39 -08:00: 3:44:39 PM [express] GET /api/notifications 304 in 1ms :: {"notifications":[],"unreadCount":0}
+2026-03-02 15:44:39 -08:00: [23:44:39.156] 🔍 [actionLogStorage] Wrote 1 entries to 2026-03-02_154438_bbfe (total: 1)
+2026-03-02 15:44:39 -08:00: 3:44:39 PM [express] POST /api/action-logs 200 in 1ms :: {"ok":true,"count":1}
+2026-03-02 15:44:39 -08:00: 3:44:39 PM [express] GET /api/health 200 in 0ms :: {"status":"healthy","uptime":9828404,"uptimeHuman":"2h 43m","memory":{"heapUsedMB":125,"heapTotalMB":135,"rssMB":213},"timestamp":"2026-03-02T23:44:39.157Z"}
+2026-03-02 15:44:40 -08:00: [23:44:40.208] 🔍 [actionLogStorage] Wrote 2 entries to 2026-03-02_154438_bbfe (total: 3)
+2026-03-02 15:44:40 -08:00: 3:44:40 PM [express] POST /api/action-logs 200 in 1ms :: {"ok":true,"count":2}
+2026-03-03 13:52:34 -08:00: 1:52:34 PM [express] GET /api/notifications 200 in 1ms :: {"notifications":[],"unreadCount":0}
+2026-03-03 13:52:34 -08:00: 1:52:34 PM [express] GET /api/health 200 in 0ms :: {"status":"healthy","uptime":89503291,"uptimeHuman":"24h 51m","memory":{"heapUsedMB":228,"heapTotalMB":258,"rssMB":268},"timestamp":"2026-03-03T21:52:34.044Z"}
+2026-03-03 13:52:34 -08:00: [21:52:34.045] 🔍 [actionLogStorage] Wrote 1 entries to 2026-03-03_135233_890c (total: 1)
+2026-03-03 13:52:34 -08:00: 1:52:34 PM [express] POST /api/action-logs 200 in 1ms :: {"ok":true,"count":1}
+2026-03-03 13:52:35 -08:00: [21:52:35.482] 🔍 [actionLogStorage] Wrote 2 entries to 2026-03-03_135233_890c (total: 3)
+2026-03-03 13:52:35 -08:00: 1:52:35 PM [express] POST /api/action-logs 200 in 0ms :: {"ok":true,"count":2}
+2026-03-04 10:37:03 -08:00: [18:37:03.642] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+2026-03-04 10:37:03 -08:00: [18:37:03.643] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+2026-03-04 10:37:03 -08:00: [18:37:03.643] ℹ️ [auth] Auth system initialized (dev mode)
+2026-03-04 10:37:03 -08:00: [18:37:03.644] ℹ️ [storage] Admin user seeded
+2026-03-04 10:37:03 -08:00: [18:37:03.644] ℹ️ [raceServer] WebSocket race server started at /ws/race
+2026-03-04 10:37:03 -08:00: [server] Vite dev server initialized
+2026-03-04 10:37:03 -08:00: 10:37:03 AM [express] serving on port 5000
+2026-03-04 12:33:38 -08:00: [20:33:38.455] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+2026-03-04 12:33:38 -08:00: [20:33:38.456] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+2026-03-04 12:33:38 -08:00: [20:33:38.456] ℹ️ [auth] Auth system initialized (dev mode)
+2026-03-04 12:33:38 -08:00: [20:33:38.458] ℹ️ [storage] Admin user seeded
+2026-03-04 12:33:38 -08:00: [20:33:38.458] ℹ️ [raceServer] WebSocket race server started at /ws/race
+2026-03-04 12:33:38 -08:00: [server] Vite dev server initialized
+2026-03-04 12:33:38 -08:00: 12:33:38 PM [express] serving on port 5000
+2026-03-04 12:51:42 -08:00: [20:51:42.352] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+2026-03-04 12:51:42 -08:00: [20:51:42.353] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+2026-03-04 12:51:42 -08:00: [20:51:42.353] ℹ️ [auth] Auth system initialized (dev mode)
+2026-03-04 12:51:42 -08:00: [20:51:42.354] ℹ️ [storage] Admin user seeded
+2026-03-04 12:51:42 -08:00: [20:51:42.354] ℹ️ [raceServer] WebSocket race server started at /ws/race
+2026-03-04 12:51:42 -08:00: [server] Vite dev server initialized
+2026-03-04 12:51:42 -08:00: 12:51:42 PM [express] serving on port 5000
+2026-03-06 14:42:58 -08:00: [22:42:58.737] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+2026-03-06 14:42:58 -08:00: [22:42:58.738] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+2026-03-06 14:42:58 -08:00: [22:42:58.738] ℹ️ [auth] Auth system initialized (dev mode)
+2026-03-06 14:42:58 -08:00: [22:42:58.739] ℹ️ [storage] Admin user seeded
+2026-03-06 14:42:58 -08:00: [22:42:58.739] ℹ️ [raceServer] WebSocket race server started at /ws/race
+2026-03-06 14:42:59 -08:00: [server] Vite dev server initialized
+2026-03-06 14:42:59 -08:00: 2:42:59 PM [express] serving on port 5000
+2026-03-06 14:53:51 -08:00: [22:53:51.612] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+2026-03-06 14:53:51 -08:00: [22:53:51.613] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+2026-03-06 14:53:51 -08:00: [22:53:51.613] ℹ️ [auth] Auth system initialized (dev mode)
+2026-03-06 14:53:51 -08:00: [22:53:51.614] ℹ️ [storage] Admin user seeded
+2026-03-06 14:53:51 -08:00: [22:53:51.614] ℹ️ [raceServer] WebSocket race server started at /ws/race
+2026-03-06 14:53:51 -08:00: [server] Vite dev server initialized
+2026-03-06 14:53:51 -08:00: 2:53:51 PM [express] serving on port 5000
+2026-03-06 17:35:46 -08:00: [01:35:46.663] 🔍 [actionLogStorage] Wrote 1 entries to 2026-03-07_173545_5hwf (total: 1)
+2026-03-06 17:35:46 -08:00: 5:35:46 PM [express] POST /api/action-logs 200 in 1ms :: {"ok":true,"count":1}
+2026-03-06 17:35:46 -08:00: 5:35:46 PM [express] GET /api/notifications 304 in 1ms :: {"notifications":[],"unreadCount":0}
+2026-03-06 17:35:46 -08:00: 5:35:46 PM [express] GET /api/health 200 in 0ms :: {"status":"healthy","uptime":9715051,"uptimeHuman":"2h 41m","memory":{"heapUsedMB":127,"heapTotalMB":139,"rssMB":195},"timestamp":"2026-03-07T01:35:46.665Z"}
+2026-03-06 17:35:48 -08:00: [01:35:48.121] 🔍 [actionLogStorage] Wrote 2 entries to 2026-03-07_173545_5hwf (total: 3)
+2026-03-06 17:35:48 -08:00: 5:35:48 PM [express] POST /api/action-logs 200 in 1ms :: {"ok":true,"count":2}
+2026-03-08 10:08:33 -07:00: [17:08:33.082] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+2026-03-08 10:08:33 -07:00: [17:08:33.083] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+2026-03-08 10:08:33 -07:00: [17:08:33.083] ℹ️ [auth] Auth system initialized (dev mode)
+2026-03-08 10:08:33 -07:00: [17:08:33.084] ℹ️ [storage] Admin user seeded
+2026-03-08 10:08:33 -07:00: [17:08:33.084] ℹ️ [raceServer] WebSocket race server started at /ws/race
+2026-03-08 10:08:33 -07:00: [server] Vite dev server initialized
+2026-03-08 10:08:33 -07:00: 10:08:33 AM [express] serving on port 5000
+2026-03-08 14:05:11 -07:00: [21:05:11.785] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+2026-03-08 14:05:11 -07:00: [21:05:11.786] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+2026-03-08 14:05:11 -07:00: [21:05:11.786] ℹ️ [auth] Auth system initialized (dev mode)
+2026-03-08 14:05:11 -07:00: [21:05:11.787] ℹ️ [storage] Admin user seeded
+2026-03-08 14:05:11 -07:00: [21:05:11.787] ℹ️ [raceServer] WebSocket race server started at /ws/race
+2026-03-08 14:05:12 -07:00: [server] Vite dev server initialized
+2026-03-08 14:05:12 -07:00: 2:05:12 PM [express] serving on port 5000
+2026-03-08 14:06:35 -07:00: [21:06:35.910] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+2026-03-08 14:06:35 -07:00: [21:06:35.910] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+2026-03-08 14:06:35 -07:00: [21:06:35.910] ℹ️ [auth] Auth system initialized (dev mode)
+2026-03-08 14:06:35 -07:00: [21:06:35.912] ℹ️ [storage] Admin user seeded
+2026-03-08 14:06:35 -07:00: [21:06:35.912] ℹ️ [raceServer] WebSocket race server started at /ws/race
+2026-03-08 14:06:36 -07:00: [server] Vite dev server initialized
+2026-03-08 14:06:36 -07:00: 2:06:36 PM [express] serving on port 5000
+2026-03-08 14:07:10 -07:00: [21:07:10.553] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+2026-03-08 14:07:10 -07:00: [21:07:10.554] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+2026-03-08 14:07:10 -07:00: [21:07:10.554] ℹ️ [auth] Auth system initialized (dev mode)
+2026-03-08 14:07:10 -07:00: [21:07:10.555] ℹ️ [storage] Admin user seeded
+2026-03-08 14:07:10 -07:00: [21:07:10.555] ℹ️ [raceServer] WebSocket race server started at /ws/race
+2026-03-08 14:07:10 -07:00: [server] Vite dev server initialized
+2026-03-08 14:07:10 -07:00: 2:07:10 PM [express] serving on port 5000
+2026-03-08 14:07:15 -07:00: [21:07:15.041] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+2026-03-08 14:07:15 -07:00: [21:07:15.042] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+2026-03-08 14:07:15 -07:00: [21:07:15.042] ℹ️ [auth] Auth system initialized (dev mode)
+2026-03-08 14:07:15 -07:00: [21:07:15.043] ℹ️ [storage] Admin user seeded
+2026-03-08 14:07:15 -07:00: [21:07:15.043] ℹ️ [raceServer] WebSocket race server started at /ws/race
+2026-03-08 14:07:15 -07:00: [server] Vite dev server initialized
+2026-03-08 14:07:15 -07:00: 2:07:15 PM [express] serving on port 5000
+2026-03-08 14:07:19 -07:00: [21:07:19.000] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+2026-03-08 14:07:19 -07:00: [21:07:19.001] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+2026-03-08 14:07:19 -07:00: [21:07:19.001] ℹ️ [auth] Auth system initialized (dev mode)
+2026-03-08 14:07:19 -07:00: [21:07:19.002] ℹ️ [storage] Admin user seeded
+2026-03-08 14:07:19 -07:00: [21:07:19.002] ℹ️ [raceServer] WebSocket race server started at /ws/race
+2026-03-08 14:07:19 -07:00: [server] Vite dev server initialized
+2026-03-08 14:07:19 -07:00: 2:07:19 PM [express] serving on port 5000
+2026-03-08 14:45:30 -07:00: 2:45:30 PM [express] GET /api/notifications 304 in 1ms :: {"notifications":[],"unreadCount":0}
+2026-03-08 14:45:30 -07:00: [21:45:30.701] 🔍 [actionLogStorage] Wrote 1 entries to 2026-03-08_144530_ntjo (total: 1)
+2026-03-08 14:45:30 -07:00: 2:45:30 PM [express] POST /api/action-logs 200 in 2ms :: {"ok":true,"count":1}
+2026-03-08 14:45:30 -07:00: 2:45:30 PM [express] GET /api/health 200 in 0ms :: {"status":"healthy","uptime":2291701,"uptimeHuman":"0h 38m","memory":{"heapUsedMB":125,"heapTotalMB":138,"rssMB":240},"timestamp":"2026-03-08T21:45:30.702Z"}
+2026-03-08 14:45:32 -07:00: [21:45:32.313] 🔍 [actionLogStorage] Wrote 2 entries to 2026-03-08_144530_ntjo (total: 3)
+2026-03-08 14:45:32 -07:00: 2:45:32 PM [express] POST /api/action-logs 200 in 1ms :: {"ok":true,"count":2}
+2026-03-08 14:47:33 -07:00: 2:47:33 PM [express] GET /api/health 200 in 0ms :: {"status":"healthy","uptime":2414557,"uptimeHuman":"0h 40m","memory":{"heapUsedMB":116,"heapTotalMB":126,"rssMB":234},"timestamp":"2026-03-08T21:47:33.558Z"}
+2026-03-08 14:47:33 -07:00: 2:47:33 PM [express] GET /api/notifications 304 in 1ms :: {"notifications":[],"unreadCount":0}
+2026-03-08 14:47:33 -07:00: [21:47:33.559] 🔍 [actionLogStorage] Wrote 1 entries to 2026-03-08_144733_5qrt (total: 1)
+2026-03-08 14:47:33 -07:00: 2:47:33 PM [express] POST /api/action-logs 200 in 0ms :: {"ok":true,"count":1}
+2026-03-08 14:47:34 -07:00: [21:47:34.482] 🔍 [actionLogStorage] Wrote 2 entries to 2026-03-08_144733_5qrt (total: 3)
+2026-03-08 14:47:34 -07:00: 2:47:34 PM [express] POST /api/action-logs 200 in 1ms :: {"ok":true,"count":2}

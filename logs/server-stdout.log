@@ -1,0 +1,6 @@
+[21:06:39.208] ℹ️ [auth] Using in-memory session store (no DATABASE_URL)
+[21:06:39.208] ℹ️ [auth] Dev auto-login enabled (NODE_ENV !== 'production')
+[21:06:39.209] ℹ️ [auth] Auth system initialized (dev mode)
+[21:06:39.209] ℹ️ [storage] Admin user seeded
+[21:06:39.210] ℹ️ [raceServer] WebSocket race server started at /ws/race
+[server] Vite dev server initialized

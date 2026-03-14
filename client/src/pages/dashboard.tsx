@@ -1,22 +1,74 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext, lazy, Suspense, Component, ErrorInfo, ReactNode } from "react";
 import { Link } from "wouter";
-import { type EngineState } from "@/lib/engineSim";
+import { useTheme, useThemeMode, THEME_ICONS } from "@/lib/theme";
+import { type EngineState, type EcuConfig } from "@/lib/engineSim";
 import { getStockTorqueMap } from "@/lib/engineSim";
+import { CategoryMenuBar } from "@/components/CategoryMenuBar";
 import { sharedSim } from "@/lib/sharedSim";
 import { EngineSound } from "@/lib/engineSound";
 import { Button } from "@/components/ui/button";
 import { FWDDrivetrainVisual } from "../components/FWDDrivetrainVisual";
 import { DynoCurveEditor } from "@/components/DynoCurveEditor";
+import { CamProfileManager } from "@/components/CamProfileManager";
 import { useAiMode } from "@/lib/aiMode";
 import { fetchAiCorrections, defaultCorrections, type AiCorrectionFactors } from "@/lib/aiPhysicsClient";
 import { log } from '@shared/logger';
+import { getActiveRace, relayPost } from '@/lib/raceRelay';
+import {
+  startActionLogger,
+  stopActionLogger,
+  logButtonPress,
+  logQMStart,
+  logQMFinish,
+  logTopSpeedResult,
+  logTickTelemetry,
+  logFullConfig,
+  logPageNav,
+  resetRunTracking,
+  snapshotFromState,
+  getSessionId,
+} from '@/lib/actionLogger';
 
-// Lazy-load 3D view so WebGL failures don't crash the entire app
+// Lazy-load 3D views so WebGL failures don't crash the entire app
 const DrivetrainView3D = lazy(() =>
   import("@/components/DrivetrainView3D").then(m => ({ default: m.DrivetrainView3D }))
 );
+// Direct import of the store sync function (no component, no WebGL)
+import("@/components/DrivetrainView3D").then(m => {
+  (window as any).__syncDrivetrainStore = m.syncDrivetrainStore;
+});
+const CamshaftViewer3D = lazy(() =>
+  import("@/components/CamshaftViewer3D").then(m => ({ default: m.CamshaftViewer3D }))
+);
 
 // Local error boundary for the 3D drivetrain view — prevents WebGL failures from crashing the dashboard
+function DrivetrainErrorFallback({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  const t = useTheme();
+  return (
+    <div style={{
+      width: '100%', maxWidth: 960, height: 480, margin: '0 auto',
+      background: t.cardBg, borderRadius: 12, border: `1px solid ${t.border}`,
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', color: t.textMuted, fontFamily: 'monospace',
+      fontSize: 12, gap: 8,
+    }}>
+      <span style={{ color: '#ff6b6b', fontSize: 14 }}>⚠ 3D View Unavailable</span>
+      <span>WebGL is required for the 3D drivetrain view.</span>
+      <span style={{ opacity: 0.5, fontSize: 10 }}>{error.message}</span>
+      <button
+        onClick={onRetry}
+        style={{
+          marginTop: 8, padding: '4px 12px', background: t.inputBg, color: t.textMuted,
+          border: `1px solid ${t.inputBorder}`, borderRadius: 4, cursor: 'pointer',
+          fontFamily: 'inherit', fontSize: 10,
+        }}
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
 class DrivetrainErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) { return { error }; }
@@ -25,29 +77,7 @@ class DrivetrainErrorBoundary extends Component<{ children: ReactNode }, { error
   }
   render() {
     if (this.state.error) {
-      return (
-        <div style={{
-          width: '100%', maxWidth: 960, height: 480, margin: '0 auto',
-          background: '#111', borderRadius: 12, border: '1px solid #333',
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          justifyContent: 'center', color: '#888', fontFamily: 'monospace',
-          fontSize: 12, gap: 8,
-        }}>
-          <span style={{ color: '#ff6b6b', fontSize: 14 }}>⚠ 3D View Unavailable</span>
-          <span>WebGL is required for the 3D drivetrain view.</span>
-          <span style={{ opacity: 0.5, fontSize: 10 }}>{this.state.error.message}</span>
-          <button
-            onClick={() => this.setState({ error: null })}
-            style={{
-              marginTop: 8, padding: '4px 12px', background: '#333', color: '#aaa',
-              border: '1px solid #555', borderRadius: 4, cursor: 'pointer',
-              fontFamily: 'inherit', fontSize: 10,
-            }}
-          >
-            Retry
-          </button>
-        </div>
-      );
+      return <DrivetrainErrorFallback error={this.state.error} onRetry={() => this.setState({ error: null })} />;
     }
     return this.props.children;
   }
@@ -74,7 +104,12 @@ function useActiveCount() {
   useEffect(() => {
     let id = sessionStorage.getItem("sim_session_id");
     if (!id) {
-      id = crypto.randomUUID();
+      id = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+        ? crypto.randomUUID()
+        : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+            const r = Math.random() * 16 | 0;
+            return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+          });
       sessionStorage.setItem("sim_session_id", id);
     }
     sessionIdRef.current = id;
@@ -125,6 +160,7 @@ interface GaugeProps {
 
 function Gauge({ label, value, unit, testId, highlight, gaugeId, customColor, onContextMenu }: GaugeProps) {
   const { draggedId, setDraggedId, onDrop } = useDrag();
+  const t = useTheme();
   const [isDragOver, setIsDragOver] = useState(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -231,11 +267,11 @@ function Gauge({ label, value, unit, testId, highlight, gaugeId, customColor, on
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onContextMenu={onContextMenu}
-      style={customColor ? { color: customColor } : undefined}
+      style={customColor ? { color: customColor } : { color: t.text }}
     >
-      <span className="text-[9px] tracking-wider uppercase opacity-70 leading-tight text-center font-mono">{label}</span>
+      <span className="text-[9px] tracking-wider uppercase leading-tight text-center font-mono" style={{ color: t.textDim }}>{label}</span>
       <span className={`text-[18px] font-mono font-bold leading-tight tabular-nums ${highlight ? "opacity-100" : ""}`} data-testid={`value-${testId}`}>{value}</span>
-      <span className="text-[8px] tracking-wide uppercase opacity-60 leading-tight font-mono">{unit}</span>
+      <span className="text-[8px] tracking-wide uppercase leading-tight font-mono" style={{ color: t.textDim }}>{unit}</span>
     </div>
   );
 }
@@ -326,11 +362,12 @@ function BoostGauge({ boostPsi, maxBoost = 20, turboEnabled, superchargerEnabled
 }
 
 function SectionHeader({ title }: { title: string }) {
+  const t = useTheme();
   return (
-    <div className="col-span-4 flex items-center gap-2 pt-4 pb-1 px-2">
-      <div className="h-px flex-1 bg-white/20" />
-      <span className="text-[9px] tracking-[0.3em] uppercase opacity-60 font-mono whitespace-nowrap">{title}</span>
-      <div className="h-px flex-1 bg-white/20" />
+    <div className="col-span-2 sm:col-span-4 flex items-center gap-2 pt-4 pb-1 px-2">
+      <div className="h-px flex-1" style={{ background: t.border }} />
+      <span className="text-[9px] tracking-[0.3em] uppercase font-mono whitespace-nowrap" style={{ color: t.textDim }}>{title}</span>
+      <div className="h-px flex-1" style={{ background: t.border }} />
     </div>
   );
 }
@@ -409,7 +446,7 @@ function PorscheTach({ rpm, redline = 8000, maxRpm = 9000 }: PorscheTachProps) {
   
   return (
     <div className="flex flex-col items-center">
-      <div className="relative w-44 h-44">
+      <div className="relative w-28 h-28 sm:w-44 sm:h-44">
         <svg viewBox="0 0 200 200" className="w-full h-full">
           {/* Outer bezel */}
           <circle cx="100" cy="100" r="96" fill="none" stroke="#505050" strokeWidth="4" />
@@ -517,7 +554,7 @@ function PorscheWheelSpeedo({ wheelSpeedMph, maxSpeed = 160 }: PorscheWheelSpeed
 
   return (
     <div className="flex flex-col items-center">
-      <div className="relative w-44 h-44">
+      <div className="relative w-28 h-28 sm:w-44 sm:h-44">
         <svg viewBox="0 0 200 200" className="w-full h-full">
           {/* Outer bezel */}
           <circle cx="100" cy="100" r="96" fill="none" stroke="#505050" strokeWidth="4" />
@@ -619,7 +656,7 @@ function PorscheSpeedo({ speedMph, maxSpeed = 160 }: PorscheSpeedoProps) {
   
   return (
     <div className="flex flex-col items-center">
-      <div className="relative w-44 h-44">
+      <div className="relative w-28 h-28 sm:w-44 sm:h-44">
         <svg viewBox="0 0 200 200" className="w-full h-full">
           {/* Outer bezel */}
           <circle cx="100" cy="100" r="96" fill="none" stroke="#505050" strokeWidth="4" />
@@ -658,20 +695,37 @@ function PorscheSpeedo({ speedMph, maxSpeed = 160 }: PorscheSpeedoProps) {
   );
 }
 
+// ── Traction Lever: vertical slider next to the left gauge ──────────────
 // Combined Porsche Gauge Cluster
 interface PorscheGaugeClusterProps {
   rpm: number;
   speedMph: number;
   wheelSpeedMph: number;
   redline?: number;
+  horsepower: number;
+  torque: number;
 }
 
-function PorscheGaugeCluster({ rpm, speedMph, wheelSpeedMph, redline = 8000 }: PorscheGaugeClusterProps) {
+function PorscheGaugeCluster({ rpm, speedMph, wheelSpeedMph, redline = 8000, horsepower, torque }: PorscheGaugeClusterProps) {
   return (
-    <div className="col-span-4 flex justify-center items-center gap-4 py-4 px-2">
-      <PorscheWheelSpeedo wheelSpeedMph={wheelSpeedMph} />
-      <PorscheTach rpm={rpm} redline={redline} />
-      <PorscheSpeedo speedMph={speedMph} />
+    <div className="col-span-2 sm:col-span-4 flex flex-col items-center py-2 sm:py-4 px-1 sm:px-2">
+      <div className="flex justify-center items-center gap-1 sm:gap-4 flex-wrap">
+        <PorscheWheelSpeedo wheelSpeedMph={wheelSpeedMph} />
+        <PorscheTach rpm={rpm} redline={redline} />
+        <PorscheSpeedo speedMph={speedMph} />
+      </div>
+      {/* HP / TQ readout */}
+      <div className="flex items-center gap-4 mt-1" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+        <div className="flex items-baseline gap-1">
+          <span className="text-[13px] font-bold tabular-nums" style={{ color: '#f59e0b' }}>{horsepower}</span>
+          <span className="text-[8px] uppercase tracking-wider" style={{ color: '#f59e0b80' }}>hp</span>
+        </div>
+        <div style={{ width: 1, height: 12, background: '#ffffff15' }} />
+        <div className="flex items-baseline gap-1">
+          <span className="text-[13px] font-bold tabular-nums" style={{ color: '#3b82f6' }}>{torque}</span>
+          <span className="text-[8px] uppercase tracking-wider" style={{ color: '#3b82f680' }}>ft-lb</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -782,7 +836,7 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
   const spokeOpacity = effectiveTireRpm > 600 ? Math.max(0.1, 1 - (effectiveTireRpm - 600) / 1000) : 1;
 
   return (
-    <div className="flex flex-col items-center py-3 col-span-4" data-testid="wheel-visual">
+    <div className="flex flex-col items-center py-3 col-span-2 sm:col-span-4" data-testid="wheel-visual">
       {/* Top row: Gear, Boost gauge, Distance */}
       <div className="w-full flex justify-between items-center mb-2 px-2">
         {/* Gear Indicator */}
@@ -882,7 +936,7 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
           <span className="text-[8px] tracking-wide uppercase opacity-50 font-mono">FT</span>
         </div>
       </div>
-      <div className="relative" style={{ width: 210, height: 195 }}>
+      <div className="relative w-[160px] h-[150px] sm:w-[210px] sm:h-[195px]" style={{ maxWidth: '100%' }}>
         {/* Smoke effects - show when slipping during launch */}
         {isSlipping && (
           <>
@@ -891,8 +945,8 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
               style={{
                 width: 30 + safeSlipPct * 0.5,
                 height: 20 + safeSlipPct * 0.3,
-                left: 85 - safeSlipPct * 0.3,
-                bottom: 35,
+                left: '38%',
+                bottom: '12%',
                 opacity: 0.3 + (safeSlipPct / 100) * 0.4,
                 animation: 'smoke-drift 0.5s ease-out infinite',
               }}
@@ -903,8 +957,8 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
                 style={{
                   width: 40 + safeSlipPct * 0.4,
                   height: 25,
-                  left: 70,
-                  bottom: 30,
+                  left: '30%',
+                  bottom: '8%',
                   opacity: 0.2 + (safeSlipPct / 100) * 0.3,
                   animation: 'smoke-drift 0.7s ease-out infinite',
                   animationDelay: '0.2s',
@@ -914,7 +968,7 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
             {extremeSlip && (
               <div 
                 className="absolute rounded-full bg-white/10 blur-xl"
-                style={{ width: 50, height: 30, left: 60, bottom: 25, opacity: 0.3, animation: 'smoke-drift 0.9s ease-out infinite', animationDelay: '0.4s' }}
+                style={{ width: 50, height: 30, left: '25%', bottom: '5%', opacity: 0.3, animation: 'smoke-drift 0.9s ease-out infinite', animationDelay: '0.4s' }}
               />
             )}
           </>
@@ -923,7 +977,7 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
         {/* Wheel assembly — SVG side-profile */}
         <div 
           className="absolute"
-          style={{ width: outerSize, height: outerSize, left: (200 - outerSize) / 2, top: 5 }}
+          style={{ width: outerSize, height: outerSize, left: '50%', top: 5, transform: 'translateX(-50%)' }}
         >
           <svg viewBox="0 0 200 200" className="w-full h-full" style={{ overflow: 'visible' }}>
             <defs>
@@ -959,7 +1013,8 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
               </linearGradient>
             </defs>
 
-            {/* === TIRE === */}
+            {/* === TIRE (rotating group — tread pattern spins with wheel) === */}
+            <g transform={`rotate(${rotation}, 100, 100)`}>
             {/* Outer tread surface */}
             <circle cx="100" cy="100" r="96" fill="url(#tireRubber)" stroke="#111" strokeWidth="1.5" />
             
@@ -1009,6 +1064,7 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
                 </>
               );
             })()}
+            </g>
 
             {/* === WHEEL (rotating group) === */}
             <g transform={`rotate(${rotation}, 100, 100)`}>
@@ -1120,10 +1176,13 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
           </svg>
         </div>
         
-        {/* Road with moving stripes */}
+        {/* Road with moving stripes — positioned so top edge touches tire bottom tread */}
+        {/* Tire bottom = top(5) + outerSize(155) = 160px from top of container.
+            In the native 195px container, that's 35px from bottom.
+            road top = bottom + height → we want road top = 35px from bottom → bottom = 35 - 12 = 23 */}
         <div 
           className="absolute overflow-hidden"
-          style={{ height: 12, width: 190, left: 10, bottom: 32, background: '#1a1a1a', borderRadius: 2 }}
+          style={{ height: 12, left: '5%', right: '5%', top: 5 + outerSize, background: '#1a1a1a', borderRadius: 2 }}
         >
           {/* Moving lane markings - shows actual ground speed */}
           <div 
@@ -1140,17 +1199,17 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
           </div>
         </div>
         
-        {/* Tire contact shadow */}
+        {/* Tire contact shadow — directly under the tire bottom */}
         <div 
           className="absolute bg-black/40 rounded-full blur-sm"
-          style={{ width: 45, height: 8, left: 82, bottom: 30 }}
+          style={{ width: '22%', height: 8, left: '39%', top: 5 + outerSize - 2 }}
         />
         
         {/* Tire marks when slipping */}
         {isSlipping && isLaunching && (
           <div 
             className="absolute bg-zinc-700/60"
-            style={{ height: 6, width: Math.min(80, safeSlipPct * 1.5), left: 105 - Math.min(40, safeSlipPct * 0.75), bottom: 33, borderRadius: 2 }}
+            style={{ height: 6, width: Math.min(80, safeSlipPct * 1.5), left: '50%', transform: 'translateX(-50%)', top: 5 + outerSize + 2, borderRadius: 2 }}
           />
         )}
         
@@ -1171,6 +1230,246 @@ function WheelVisual({ tireRpm = 0, slipPct = 0, speedMph = 0, tireWidthMm = 195
           </span>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DRAG STRIP PROGRESS — horizontal "bird's-eye" view of the run
+// ═══════════════════════════════════════════════════════════════════
+const QUARTER_MILE_FT = 1320;
+const STRIP_MARKERS = [
+  { ft: 0, label: 'START' },
+  { ft: 60, label: "60'" },
+  { ft: 330, label: "330'" },
+  { ft: 660, label: '1/8 mi' },
+  { ft: 1000, label: "1000'" },
+  { ft: 1320, label: 'FINISH' },
+];
+
+function DragStripProgress({
+  distanceFt, quarterMileActive, quarterMileLaunched, qmFinished,
+  speedMph, elapsedTime, sixtyFootTime, eighthMileTime, quarterMileET,
+  topSpeedMode,
+}: {
+  distanceFt: number;
+  quarterMileActive: boolean;
+  quarterMileLaunched: boolean;
+  qmFinished: boolean;
+  speedMph: number;
+  elapsedTime: number;
+  sixtyFootTime: number | null;
+  eighthMileTime: number | null;
+  quarterMileET: number | null;
+  topSpeedMode: boolean;
+}) {
+  const t = useTheme();
+  const carRef = useRef<HTMLDivElement>(null);
+  const trailRef = useRef<HTMLDivElement>(null);
+
+  // Expose car + trail refs globally so the rAF tick loop can update them
+  // directly every frame, bypassing React 18 concurrent batching.
+  // Same pattern as __syncDrivetrainStore for the 3D view.
+  useEffect(() => {
+    (window as any).__dragStripCarRef = carRef;
+    (window as any).__dragStripTrailRef = trailRef;
+    return () => {
+      (window as any).__dragStripCarRef = null;
+      (window as any).__dragStripTrailRef = null;
+    };
+  }, []);
+
+  // In top speed mode, hide this strip (distance can be miles)
+  if (topSpeedMode) return null;
+
+  const safeDist = typeof distanceFt === 'number' && Number.isFinite(distanceFt) ? distanceFt : 0;
+  const progress = Math.min(safeDist / QUARTER_MILE_FT, 1);
+  const pct = progress * 100;
+  const isStaging = quarterMileActive && !quarterMileLaunched;
+  const isRunning = quarterMileLaunched && !qmFinished;
+
+  // Car color based on state
+  const carColor = qmFinished ? '#f59e0b' : isRunning ? '#a3e635' : isStaging ? '#3b82f6' : '#888';
+  const carGlow = isRunning ? '0 0 8px rgba(163,230,53,0.8), 0 0 16px rgba(163,230,53,0.4)' : qmFinished ? '0 0 8px rgba(245,158,11,0.6)' : 'none';
+
+  return (
+    <div className="mx-3 mb-2 mt-1 select-none" data-testid="drag-strip-progress">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[9px] tracking-[0.25em] uppercase font-mono font-bold" style={{ color: t.textDim }}>
+          🏁 DRAG STRIP — 1/4 MILE
+        </span>
+        <span className="text-[10px] font-mono tabular-nums font-bold" style={{ color: isRunning ? '#a3e635' : qmFinished ? '#f59e0b' : t.textDim }}>
+          {safeDist.toFixed(0)} ft{isRunning ? ` · ${speedMph.toFixed(0)} mph · ${elapsedTime}s` : ''}
+        </span>
+      </div>
+
+      {/* Strip */}
+      <div className="relative w-full" style={{ height: 48 }}>
+        {/* Track surface — darker asphalt with subtle texture */}
+        <div
+          className="absolute inset-0 rounded-md overflow-hidden"
+          style={{
+            background: 'linear-gradient(to bottom, #222 0%, #181818 30%, #111 50%, #181818 70%, #222 100%)',
+            border: `1px solid rgba(255,255,255,0.15)`,
+            boxShadow: 'inset 0 1px 4px rgba(0,0,0,0.5)',
+          }}
+        />
+
+        {/* Lane lines — double yellow center */}
+        <div className="absolute left-[3%] right-[3%]" style={{ top: '49%', height: 0, borderTop: '1px dashed rgba(255,255,0,0.15)' }} />
+
+        {/* Distance markers */}
+        {STRIP_MARKERS.map(m => {
+          const x = Math.max(1.5, Math.min(98.5, (m.ft / QUARTER_MILE_FT) * 100));
+          const isFinish = m.ft === QUARTER_MILE_FT;
+          const isStart = m.ft === 0;
+          const passed = safeDist >= m.ft && m.ft > 0;
+          return (
+            <div key={m.ft} className="absolute top-0 bottom-0" style={{ left: `${x}%`, transform: 'translateX(-50%)', zIndex: 1 }}>
+              {/* Marker line */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 2,
+                  bottom: 16,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: isStart || isFinish ? 3 : 1,
+                  background: isFinish
+                    ? (qmFinished ? '#f59e0b' : 'rgba(245,158,11,0.6)')
+                    : isStart
+                    ? '#22c55e'
+                    : passed
+                    ? 'rgba(163,230,53,0.5)'
+                    : 'rgba(255,255,255,0.15)',
+                  borderRadius: 1,
+                }}
+              />
+              {/* Label */}
+              <span
+                className="font-mono leading-none"
+                style={{
+                  position: 'absolute',
+                  bottom: 2,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  fontSize: isStart || isFinish ? 8 : 7,
+                  fontWeight: isStart || isFinish ? 700 : 400,
+                  color: isFinish
+                    ? (qmFinished ? '#f59e0b' : 'rgba(245,158,11,0.7)')
+                    : isStart
+                    ? '#22c55e'
+                    : passed
+                    ? 'rgba(163,230,53,0.7)'
+                    : 'rgba(255,255,255,0.3)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {m.label}
+              </span>
+            </div>
+          );
+        })}
+
+        {/* Progress filled track — green glow trail */}
+        <div
+          ref={trailRef}
+          className="absolute rounded-l-md"
+          style={{
+            top: 1,
+            bottom: 1,
+            left: 1,
+            width: pct > 0.5 ? `${Math.min(pct, 100)}%` : 0,
+            background: qmFinished
+              ? 'linear-gradient(90deg, rgba(34,197,94,0.1) 0%, rgba(245,158,11,0.2) 100%)'
+              : 'linear-gradient(90deg, rgba(163,230,53,0.03) 0%, rgba(163,230,53,0.12) 100%)',
+            willChange: 'width',
+          }}
+        />
+
+        {/* ═══ CAR ICON ═══ — large enough to see across the room */}
+        <div
+          ref={carRef}
+          style={{
+            position: 'absolute',
+            left: `${Math.min(pct, 100)}%`,
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            willChange: isRunning ? 'left' : undefined,
+            zIndex: 3,
+          }}
+        >
+          <div
+            style={{
+              width: 28,
+              height: 14,
+              borderRadius: '3px 8px 8px 3px',
+              background: carColor,
+              boxShadow: carGlow,
+              position: 'relative',
+            }}
+          >
+            {/* Windshield */}
+            <div style={{
+              position: 'absolute',
+              right: 4,
+              top: 2,
+              width: 6,
+              height: 10,
+              borderRadius: '1px 4px 4px 1px',
+              background: 'rgba(0,0,0,0.4)',
+            }} />
+            {/* Front wheels */}
+            <div style={{ position: 'absolute', right: -2, bottom: -3, width: 5, height: 5, borderRadius: '50%', background: '#222', border: '1px solid #555' }} />
+            {/* Rear wheels */}
+            <div style={{ position: 'absolute', left: 0, bottom: -3, width: 5, height: 5, borderRadius: '50%', background: '#222', border: '1px solid #555' }} />
+            {/* Exhaust flame when moving */}
+            {isRunning && speedMph > 5 && (
+              <div style={{
+                position: 'absolute',
+                left: -8,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: 8 + Math.min(speedMph / 20, 8),
+                height: 4,
+                borderRadius: '2px 0 0 2px',
+                background: 'linear-gradient(to left, #ff6600, #ff4400, transparent)',
+                opacity: 0.7,
+              }} />
+            )}
+          </div>
+        </div>
+
+        {/* Staging lights / Christmas tree */}
+        {isStaging && (
+          <div className="absolute flex flex-col gap-0.5" style={{ left: 6, top: 3 }}>
+            <div className="w-2 h-2 rounded-full bg-amber-500" style={{ animation: 'pulse 1s ease-in-out infinite' }} />
+            <div className="w-2 h-2 rounded-full bg-amber-500" style={{ animation: 'pulse 1s ease-in-out infinite', animationDelay: '0.15s' }} />
+            <div className="w-2 h-2 rounded-full bg-green-500" style={{ animation: 'pulse 1s ease-in-out infinite', animationDelay: '0.3s' }} />
+          </div>
+        )}
+
+        {/* Finish flag */}
+        {qmFinished && (
+          <div className="absolute" style={{ right: 4, top: 2, fontSize: 16 }}>🏁</div>
+        )}
+      </div>
+
+      {/* Split times row — always visible when active */}
+      {(quarterMileActive || qmFinished) && (
+        <div className="flex justify-between mt-1 px-1">
+          <span className="text-[9px] font-mono tabular-nums font-semibold" style={{ color: sixtyFootTime ? '#a3e635' : 'rgba(255,255,255,0.2)' }}>
+            60' {sixtyFootTime ? `${sixtyFootTime}s` : '---'}
+          </span>
+          <span className="text-[9px] font-mono tabular-nums font-semibold" style={{ color: eighthMileTime ? '#a3e635' : 'rgba(255,255,255,0.2)' }}>
+            1/8 mi {eighthMileTime ? `${eighthMileTime}s` : '---'}
+          </span>
+          <span className="text-[9px] font-mono tabular-nums font-bold" style={{ color: quarterMileET ? '#f59e0b' : 'rgba(255,255,255,0.2)' }}>
+            1/4 mi {quarterMileET ? `${quarterMileET}s` : '---'}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1196,7 +1495,7 @@ const defaultGaugeOrder = [
   // Forces
   'drag-force', 'rolling', 'net-force', 'accel',
   // Quarter Mile
-  'speed', 'speed-kmh', 'distance', 'distance-m', 'tire-rpm', 'elapsed', 'qm-et', 'trap-speed',
+  'speed', 'speed-kmh', 'distance', 'distance-m', 'distance-mi', 'tire-rpm', 'elapsed', 'qm-et', 'trap-speed', 'top-speed',
   // Split Times
   '60ft', '330ft', 'eighth', '1000ft',
   // ECU Status
@@ -1214,12 +1513,13 @@ interface ResultRowProps {
 }
 
 function ResultRow({ label, value, unit, testId, large }: ResultRowProps) {
+  const t = useTheme();
   return (
     <div className="flex items-baseline justify-between py-0.5" data-testid={testId}>
-      <span className="text-[10px] tracking-wider uppercase opacity-70 font-mono">{label}</span>
+      <span className="text-[10px] tracking-wider uppercase font-mono" style={{ color: t.textDim }}>{label}</span>
       <div className="flex items-baseline gap-1">
-        <span className={`${large ? "text-[22px]" : "text-[16px]"} font-mono font-bold tabular-nums`}>{value ?? "---"}</span>
-        <span className="text-[9px] tracking-wide uppercase opacity-60 font-mono">{unit}</span>
+        <span className={`${large ? "text-[22px]" : "text-[16px]"} font-mono font-bold tabular-nums`} style={{ color: t.text }}>{value ?? "---"}</span>
+        <span className="text-[9px] tracking-wide uppercase font-mono" style={{ color: t.textDim }}>{unit}</span>
       </div>
     </div>
   );
@@ -1227,6 +1527,8 @@ function ResultRow({ label, value, unit, testId, large }: ResultRowProps) {
 
 export default function Dashboard() {
   const simRef = useRef(sharedSim);
+  const t = useTheme();
+  const [themeMode, cycleTheme] = useThemeMode();
   const soundRef = useRef<EngineSound | null>(null);
   const [state, setState] = useState<EngineState | null>(null);
   const [throttle, setThrottle] = useState(0);
@@ -1237,17 +1539,45 @@ export default function Dashboard() {
   const soundFadedRef = useRef(false);
   const finishStateRef = useRef<EngineState | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [runMode, setRunMode] = useState<'quarter' | 'topspeed'>('quarter');
   const activeCount = useActiveCount();
   const [aiMode, toggleAi] = useAiMode();
   const [aiNotes, setAiNotes] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const aiPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // ── Notification badge state ──
+  const [unreadCount, setUnreadCount] = useState(0);
+  useEffect(() => {
+    const fetchUnread = () => {
+      fetch('/api/notifications?unreadOnly=true')
+        .then(r => r.ok ? r.json() : [])
+        .then((arr: unknown[]) => setUnreadCount(arr.length))
+        .catch(() => {});
+    };
+    fetchUnread();
+    const iv = setInterval(fetchUnread, 15000);
+    return () => clearInterval(iv);
+  }, []);
+
   // ── Dyno Curve Editor state ──
-  const [dynoOpen, setDynoOpen] = useState(false);
+  const [dynoOpen, setDynoOpen] = useState(true);
+  const [camViewOpen, setCamViewOpen] = useState(false);
   const [customTorqueMap, setCustomTorqueMap] = useState<[number, number][] | null>(
     () => sharedSim.getCustomTorqueMap()
   );
+
+  // ── ECU Config state for CategoryMenuBar ──
+  const [ecuConfig, setEcuConfig] = useState<EcuConfig>(() => simRef.current.getEcuConfig());
+  const handleEcuChange = useCallback((key: keyof EcuConfig, value: unknown) => {
+    const updated = { ...simRef.current.getEcuConfig(), [key]: value };
+    simRef.current.setEcuConfig(updated);
+    setEcuConfig(updated);
+  }, []);
+  const handleEcuConfigReplace = useCallback((newConfig: EcuConfig) => {
+    simRef.current.setEcuConfig(newConfig);
+    setEcuConfig(newConfig);
+  }, []);
 
   const handleTorqueMapChange = useCallback((map: [number, number][]) => {
     setCustomTorqueMap(map);
@@ -1259,6 +1589,16 @@ export default function Dashboard() {
     setCustomTorqueMap(null);
     sharedSim.setCustomTorqueMap(null);
     log.info('dashboard', 'Torque map reset to stock');
+  }, []);
+
+  // ── Custom cam profile handler ──
+  const handleCamProfileApply = useCallback((profile: {
+    vtecIntakeLiftMm: number; vtecExhaustLiftMm: number;
+    vtecIntakeDuration: number; vtecExhaustDuration: number;
+  }) => {
+    const current = simRef.current.getEcuConfig();
+    simRef.current.setEcuConfig({ ...current, ...profile });
+    log.info('dashboard', 'Custom cam profile applied', profile);
   }, []);
   
   // Drag and drop state for gauges
@@ -1402,35 +1742,40 @@ export default function Dashboard() {
   useEffect(() => {
     soundRef.current = new EngineSound();
     
-    // Auto-enable sound on first user interaction (required by browsers)
+    // Auto-enable sound on first user interaction (required by browsers).
+    // iOS Safari is very strict: AudioContext.resume() MUST be called
+    // synchronously inside a non-passive touchend / click handler.
     const enableSound = () => {
       if (soundRef.current && !soundInitialized.current) {
         const ok = soundRef.current.init();
         if (ok) {
+          soundRef.current.resume();          // explicit resume in gesture stack
           soundRef.current.setEnabled(true);
           soundInitialized.current = true;
-          setSoundOn(true);  // Update React state to reflect sound is on
+          setSoundOn(true);
         }
       }
-      document.removeEventListener('click', enableSound);
-      document.removeEventListener('touchstart', enableSound);
-      document.removeEventListener('keydown', enableSound);
+      document.removeEventListener('click', enableSound, true);
+      document.removeEventListener('touchend', enableSound, true);
+      document.removeEventListener('keydown', enableSound, true);
     };
     
-    document.addEventListener('click', enableSound);
-    document.addEventListener('touchstart', enableSound);
-    document.addEventListener('keydown', enableSound);
+    // Use capture phase + non-passive so iOS treats these as user-activation gestures
+    document.addEventListener('click', enableSound, true);
+    document.addEventListener('touchend', enableSound, { capture: true, passive: false });
+    document.addEventListener('keydown', enableSound, true);
     
     return () => {
-      document.removeEventListener('click', enableSound);
-      document.removeEventListener('touchstart', enableSound);
-      document.removeEventListener('keydown', enableSound);
+      document.removeEventListener('click', enableSound, true);
+      document.removeEventListener('touchend', enableSound, true);
+      document.removeEventListener('keydown', enableSound, true);
       soundRef.current?.destroy();
       soundRef.current = null;
     };
   }, []);
 
   const tick = useCallback(() => {
+    try {
     const now = performance.now();
     let delta = now - lastTimeRef.current;
     lastTimeRef.current = now;
@@ -1440,18 +1785,122 @@ export default function Dashboard() {
     if (delta < 0) delta = 16;   // clock went backwards (rare)
     const newState = simRef.current.update(delta);
 
+    // ── Multiplayer race relay: broadcast sim state to race page ──
+    const activeRaceId = getActiveRace();
+    if (activeRaceId && newState.quarterMileActive && newState.speedMph > 0) {
+      relayPost({
+        type: "raceUpdate",
+        speedMph: newState.speedMph,
+        distanceFt: newState.distanceFt,
+        rpm: newState.rpm,
+        gear: newState.currentGearDisplay,
+        elapsedMs: newState.elapsedTime * 1000,
+      });
+    }
+
     if (newState.quarterMileET !== null && newState.quarterMileActive) {
+      if (!soundFadedRef.current && !newState.topSpeedMode) {
+        soundFadedRef.current = true;
+        soundRef.current?.fadeOut(800);
+      }
+      if (!finishStateRef.current) {
+        finishStateRef.current = { ...newState };
+        // Log full QM time slip with all peaks, splits, config
+        const config = simRef.current.getEcuConfig();
+        logQMFinish(newState, config as unknown as Record<string, unknown>);
+        setTimeout(() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 50);
+
+        // ── Relay finish data to race page if in multiplayer race ──
+        if (activeRaceId) {
+          relayPost({
+            type: "raceFinish",
+            quarterMileTime: newState.quarterMileET!,
+            quarterMileSpeed: newState.trapSpeed ?? newState.speedMph,
+            topSpeedMph: newState.peakSpeedMph,
+            reactionTime: 0, // reaction time is measured by WS countdown
+            sixtyFootTime: newState.sixtyFootTime ?? 0,
+            eighthMileTime: newState.eighthMileTime ?? 0,
+            eighthMileSpeed: newState.speedMph * 0.87, // approximate at 1/8
+            peakHp: newState.peakWheelHp,
+            peakTorque: newState.peakWheelHp > 0 ? (newState.peakWheelHp * 5252) / (newState.peakRpm || 8000) : 0,
+            vehicleConfig: config as unknown as Record<string, unknown>,
+            ecuConfig: config as unknown as Record<string, unknown>,
+          });
+        }
+      }
+    }
+    // Top speed mode: detect when terminal velocity is reached
+    if (newState.topSpeedReached && newState.topSpeedMode) {
       if (!soundFadedRef.current) {
         soundFadedRef.current = true;
         soundRef.current?.fadeOut(800);
       }
       if (!finishStateRef.current) {
         finishStateRef.current = { ...newState };
+        const config = simRef.current.getEcuConfig();
+        logTopSpeedResult(newState, config as unknown as Record<string, unknown>);
         setTimeout(() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 50);
       }
     }
 
+    // Full telemetry logging: snapshots every 100ms, auto-detects shifts & splits
+    logTickTelemetry(newState);
+
     setState(newState);
+
+    // ── Direct DOM update for drag strip car position ────────
+    // React 18 concurrent mode may defer rAF-driven setState re-renders.
+    // Bypass React entirely: write straight to the DOM element every frame.
+    if (!newState.topSpeedMode) {
+      const carRefObj = (window as any).__dragStripCarRef as React.RefObject<HTMLDivElement> | null;
+      const trailRefObj = (window as any).__dragStripTrailRef as React.RefObject<HTMLDivElement> | null;
+      if (carRefObj?.current) {
+        const d = typeof newState.distanceFt === 'number' && Number.isFinite(newState.distanceFt) ? newState.distanceFt : 0;
+        const p = `${Math.min(d / 1320 * 100, 100)}%`;
+        if (newState.quarterMileActive || (newState.quarterMileET !== null)) {
+          carRefObj.current.style.left = p;
+          carRefObj.current.style.animation = '';
+        }
+      }
+      if (trailRefObj?.current) {
+        const d = typeof newState.distanceFt === 'number' && Number.isFinite(newState.distanceFt) ? newState.distanceFt : 0;
+        const w = Math.min(d / 1320 * 100, 100);
+        trailRefObj.current.style.width = w > 0.5 ? `${w}%` : '0';
+      }
+    }
+
+    // Push live sim data into the 3D drivetrain view's module-level store.
+    // This bypasses React rendering entirely — the R3F useFrame loop reads
+    // the store directly every animation frame.
+    const syncFn = (window as any).__syncDrivetrainStore as ((p: any) => void) | undefined;
+    if (syncFn) {
+      const config = simRef.current.getEcuConfig();
+      syncFn({
+        tireRpm: newState.tireRpm,
+        rpm: newState.rpm,
+        clutchStatus: newState.clutchStatus,
+        clutchSlipPct: newState.clutchSlipPct,
+        currentGear: newState.currentGearDisplay,
+        currentGearRatio: newState.currentGearRatio,
+        slipPct: newState.tireSlipPercent,
+        drivetrainType: newState.drivetrainType,
+        accelerationG: newState.accelerationG,
+        throttle: newState.throttlePosition,
+        engineId: config.engineId,
+        redlineRpm: config.redlineRpm,
+        gearRatios: config.gearRatios,
+        finalDriveRatio: config.finalDriveRatio,
+        transmissionModel: config.transmissionModel,
+        tireWidthMm: config.tireWidthMm,
+        tireAspectRatio: config.tireAspectRatio,
+        wheelDiameterIn: config.tireWheelDiameterIn,
+        speedMph: newState.speedMph,
+        topSpeedMode: newState.topSpeedMode,
+        quarterMileLaunched: newState.quarterMileLaunched,
+        quarterMileActive: newState.quarterMileActive,
+        distanceFt: newState.distanceFt,
+      });
+    }
     if (soundRef.current && soundRef.current.isEnabled()) {
       const config = simRef.current.getEcuConfig();
       soundRef.current.update(
@@ -1464,11 +1913,23 @@ export default function Dashboard() {
       );
     }
     rafRef.current = requestAnimationFrame(tick);
+    } catch (err) {
+      console.error('[TICK ERROR]', err);
+      rafRef.current = requestAnimationFrame(tick); // keep loop alive even on error
+    }
   }, []);
 
   useEffect(() => {
+    startActionLogger();
+    logPageNav('dashboard');
+    // Log initial config snapshot
+    const config = simRef.current.getEcuConfig();
+    logFullConfig(config as unknown as Record<string, unknown>, 'Dashboard loaded — initial config');
     rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      stopActionLogger();
+    };
   }, [tick]);
 
   const handleThrottle = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1487,7 +1948,11 @@ export default function Dashboard() {
         }
       }
       if (soundInitialized.current) {
+        // Always resume — iOS may have suspended the context.
+        // This runs inside a click/touchend handler so iOS allows it.
+        soundRef.current.resume();
         soundRef.current.setEnabled(true);
+        soundRef.current.cancelFade();
         setSoundOn(true);
       }
     } else {
@@ -1498,17 +1963,51 @@ export default function Dashboard() {
 
   // Stage the car (clutch in, ready to rev)
   const handleStage = useCallback(() => {
-    simRef.current.startQuarterMile();
-  }, []);
+    const config = simRef.current.getEcuConfig();
+    logButtonPress('STAGE', { runMode });
+    logFullConfig(config as unknown as Record<string, unknown>, `Staged for ${runMode} run`);
+    resetRunTracking();
+    if (runMode === 'topspeed') {
+      simRef.current.startTopSpeedRun();
+    } else {
+      simRef.current.startQuarterMile();
+      logQMStart(config as unknown as Record<string, unknown>);
+    }
+  }, [runMode]);
 
   // Dump the clutch and launch!
   const handleLaunch = useCallback(() => {
+    logButtonPress('LAUNCH (DUMP CLUTCH)', { runMode });
+    // Auto-floor throttle on launch — simulates real driver behavior.
+    // The engine sim also sets throttle=1.0 internally, but we sync
+    // the UI slider so the user sees WOT during the run.
+    setThrottle(100);
+    simRef.current.setThrottle(1.0);
     simRef.current.launchCar();
-  }, []);
+  }, [runMode]);
 
   // Reset after run
   const handleReset = useCallback(() => {
-    simRef.current.resetQuarterMile();
+    logButtonPress('RESET', { runMode });
+    resetRunTracking();
+    if (runMode === 'topspeed') {
+      simRef.current.resetTopSpeedRun();
+    } else {
+      // Grab telemetry before resetting
+      const telemetry = simRef.current.getRunTelemetry?.();
+      if (telemetry && telemetry.length > 0) {
+        fetch('/api/race-telemetry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ frames: telemetry }),
+        }).then(() => {
+          console.log(`[Telemetry] Saved ${telemetry.length} frames`);
+        }).catch((err: unknown) => {
+          console.error('[Telemetry] Failed to save:', err);
+        });
+      }
+      simRef.current.resetQuarterMile();
+    }
     setThrottle(0);
     soundFadedRef.current = false;
     finishStateRef.current = null;
@@ -1518,10 +2017,10 @@ export default function Dashboard() {
         soundRef.current.setEnabled(true);
       }
     }
-  }, [soundOn]);
+  }, [soundOn, runMode]);
 
   if (!state) return (
-    <div className="fixed inset-0 bg-black text-white flex flex-col items-center justify-center select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}>
+    <div className="fixed inset-0 flex flex-col items-center justify-center select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", background: t.bg, color: t.text }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 24, marginBottom: 12, opacity: 0.6 }}>⚙️</div>
         <div style={{ fontSize: 11, letterSpacing: '0.2em', opacity: 0.5 }}>INITIALIZING ENGINE SIM...</div>
@@ -1530,14 +2029,16 @@ export default function Dashboard() {
   );
 
   const qmFinished = state.quarterMileET !== null;
+  const tsFinished = state.topSpeedReached;
+  const runFinished = runMode === 'topspeed' ? tsFinished : qmFinished;
   const fs = finishStateRef.current;
 
   return (
-    <div className="fixed inset-0 bg-black text-white flex flex-col select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
+    <div className="fixed inset-0 flex flex-col select-none" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)", background: t.bg, color: t.text }}>
       <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="gauge-scroll-area">
         <div className="flex items-center justify-between px-3 pt-2 pb-1 gap-2">
           <div className="flex flex-col gap-0.5">
-            <span className="text-[10px] tracking-[0.3em] uppercase opacity-60 font-mono">B16A2 DOHC VTEC</span>
+            <span className="text-[10px] tracking-[0.3em] uppercase font-mono" style={{ color: t.textDim }}>B16A2 DOHC VTEC</span>
             {/* Live Users Indicator - inline with title */}
             {activeCount > 0 && (
               <div className="flex items-center gap-1.5" data-testid="live-users-indicator">
@@ -1545,7 +2046,7 @@ export default function Dashboard() {
                   <span className="animate-pulse-live absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
                 </span>
-                <span className="text-[8px] tracking-wider uppercase font-mono text-white/60" data-testid="text-live-count">
+                <span className="text-[8px] tracking-wider uppercase font-mono" style={{ color: t.textDim }} data-testid="text-live-count">
                   {activeCount} LIVE
                 </span>
               </div>
@@ -1553,29 +2054,53 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={cycleTheme}
+              className="text-[10px] tracking-wider uppercase font-mono border px-2 py-1.5 sm:py-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+              style={{ borderColor: t.inputBorder, color: t.textMuted }}
+              title={`Theme: ${themeMode}`}
+            >
+              {THEME_ICONS[themeMode]}
+            </button>
+            <button
               onClick={toggleAi}
-              className={`text-[10px] tracking-wider uppercase font-mono border px-2 py-0.5 ${aiMode ? "border-green-500/60 text-green-400 opacity-100" : "border-white/25 opacity-70"}`}
+              className={`text-[10px] tracking-wider uppercase font-mono border px-2 py-1.5 sm:py-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center ${aiMode ? "border-green-500/60 text-green-400 opacity-100" : ""}`}
+              style={!aiMode ? { borderColor: t.inputBorder, color: t.textDim } : undefined}
               data-testid="button-ai-toggle"
             >
               {aiMode ? (aiLoading ? "AI..." : "AI ON") : "CODE"}
             </button>
             <button
               onClick={handleSoundToggle}
-              className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5"
+              onTouchEnd={(e) => { e.preventDefault(); handleSoundToggle(); }}
+              className={`text-[10px] tracking-wider uppercase font-mono border px-2 py-1.5 sm:py-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center ${soundOn ? "border-green-500/60 text-green-400 opacity-100" : ""}`}
+              style={!soundOn ? { borderColor: t.inputBorder, color: t.textDim } : undefined}
               data-testid="button-sound-toggle"
             >
-              {soundOn ? "SND" : "SND"}
+              {soundOn ? "🔊 ON" : "🔇 OFF"}
             </button>
-            <Link href="/ecu" className="text-[10px] tracking-wider uppercase opacity-70 font-mono border border-white/25 px-2 py-0.5" data-testid="link-ecu">
+            <Link href="/ecu" className="text-[10px] tracking-wider uppercase font-mono border px-2 py-1.5 sm:py-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" style={{ borderColor: t.inputBorder, color: t.textDim }} data-testid="link-ecu">
               ECU
             </Link>
+            <Link href="/friends" className="text-[10px] tracking-wider uppercase font-mono border px-2 py-1.5 sm:py-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" style={{ borderColor: t.inputBorder, color: t.textDim }} data-testid="link-friends">
+              FRIENDS
+            </Link>
+            <Link href="/admin" className="text-[10px] tracking-wider uppercase font-mono border border-yellow-500/40 text-yellow-400 px-2 py-1.5 sm:py-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" data-testid="link-admin">
+              ADMIN
+            </Link>
+            <span className="relative text-[10px] tracking-wider uppercase font-mono border px-2 py-1.5 sm:py-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center cursor-pointer" style={{ borderColor: t.inputBorder, color: t.textDim }} title="Notifications" data-testid="notif-bell">
+              🔔
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] rounded-full w-4 h-4 flex items-center justify-center font-bold">{unreadCount > 9 ? '9+' : unreadCount}</span>
+              )}
+            </span>
             {gaugeOrder.length > 0 && (
               <button
                 onClick={() => {
                   localStorage.removeItem('gaugeOrder');
                   setGaugeOrder([]);
                 }}
-                className="text-[10px] tracking-wider uppercase opacity-50 font-mono border border-white/15 px-2 py-0.5"
+                className="text-[10px] tracking-wider uppercase font-mono border px-2 py-0.5"
+                style={{ borderColor: t.borderFaint, color: t.textDim }}
                 data-testid="button-reset-layout"
                 title="Reset gauge layout"
               >
@@ -1585,31 +2110,160 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {qmFinished && fs && (
-          <div className="mx-3 mb-2 border border-white/30 p-3" data-testid="results-overlay">
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* ── CATEGORY MENU BAR (ECU settings in 6 tabs) ──          */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <CategoryMenuBar config={ecuConfig} onChange={handleEcuChange} onConfigReplace={handleEcuConfigReplace} />
+
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* ── VISUAL TOOLS (expandable sections) ──                  */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="px-3 pt-1 pb-1 flex flex-col gap-1" data-testid="visual-tools">
+          {/* 3D Camshaft Viewer */}
+          <div>
+            <button
+              onClick={() => setCamViewOpen(o => !o)}
+              className="w-full flex items-center justify-between py-1.5 px-2 text-[10px] tracking-[0.2em] uppercase font-mono border transition-colors"
+              style={{ borderColor: camViewOpen ? t.accent : t.borderFaint, background: camViewOpen ? t.inputBg : 'transparent' }}
+            >
+              <span className="flex items-center gap-2">
+                <span style={{ color: '#22c55e', opacity: 0.8 }}>⚙</span>
+                <span style={{ color: t.textDim }}>3D CAMSHAFT VIEWER</span>
+                {state.vtecActive && <span className="text-green-400/80 text-[8px]">◆ VTEC</span>}
+              </span>
+              <span className="opacity-40">{camViewOpen ? '▼' : '▶'}</span>
+            </button>
+            {camViewOpen && (
+              <div className="mt-2 pb-1">
+                <DrivetrainErrorBoundary>
+                  <Suspense fallback={
+                    <div style={{
+                      width: '100%', height: 280, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', background: t.cardBg, borderRadius: 12,
+                      border: `1px solid ${t.border}`, color: t.textDim, fontFamily: 'monospace', fontSize: 11,
+                    }}>
+                      Loading 3D camshaft view...
+                    </div>
+                  }>
+                    <CamshaftViewer3D
+                      lowCamIntakeLiftMm={ecuConfig.lowCamIntakeLiftMm}
+                      lowCamExhaustLiftMm={ecuConfig.lowCamExhaustLiftMm}
+                      lowCamIntakeDuration={ecuConfig.lowCamIntakeDuration}
+                      lowCamExhaustDuration={ecuConfig.lowCamExhaustDuration}
+                      vtecIntakeLiftMm={ecuConfig.vtecIntakeLiftMm}
+                      vtecExhaustLiftMm={ecuConfig.vtecExhaustLiftMm}
+                      vtecIntakeDuration={ecuConfig.vtecIntakeDuration}
+                      vtecExhaustDuration={ecuConfig.vtecExhaustDuration}
+                      rpm={state.rpm}
+                      vtecActive={state.vtecActive}
+                      numCylinders={ecuConfig.numCylinders}
+                      height={300}
+                    />
+                  </Suspense>
+                </DrivetrainErrorBoundary>
+                <div className="mt-3">
+                  <CamProfileManager
+                    onApply={handleCamProfileApply}
+                    currentProfile={{
+                      vtecIntakeLiftMm: ecuConfig.vtecIntakeLiftMm,
+                      vtecExhaustLiftMm: ecuConfig.vtecExhaustLiftMm,
+                      vtecIntakeDuration: ecuConfig.vtecIntakeDuration,
+                      vtecExhaustDuration: ecuConfig.vtecExhaustDuration,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Dyno Curve Editor */}
+          <div>
+            <button
+              onClick={() => setDynoOpen(o => !o)}
+              className="w-full flex items-center justify-between py-1.5 px-2 text-[10px] tracking-[0.2em] uppercase font-mono border transition-colors"
+              style={{ borderColor: dynoOpen ? t.accent : t.borderFaint, background: dynoOpen ? t.inputBg : 'transparent' }}
+            >
+              <span className="flex items-center gap-2">
+                <span style={{ color: '#f59e0b', opacity: 0.8 }}>📈</span>
+                <span style={{ color: t.textDim }}>DYNO CURVE EDITOR</span>
+                {customTorqueMap && <span className="text-amber-400/80 text-[8px]">● TUNED</span>}
+              </span>
+              <span className="opacity-40">{dynoOpen ? '▼' : '▶'}</span>
+            </button>
+            {dynoOpen && (
+              <div className="mt-2 pb-1">
+                <DynoCurveEditor
+                  customMap={customTorqueMap}
+                  onChange={handleTorqueMapChange}
+                  onReset={handleTorqueMapReset}
+                  currentRpm={state.rpm}
+                  currentTorque={state.torque}
+                  currentHp={state.horsepower}
+                  boostPsi={state.boostPsi}
+                  turboEnabled={state.turboEnabled}
+                  superchargerEnabled={state.superchargerEnabled}
+                  nitrousHpAdder={ecuConfig.nitrousHpAdder}
+                  nitrousEnabled={state.nitrousActive}
+                  engineId={ecuConfig.engineId}
+                  redlineRpm={ecuConfig.redlineRpm}
+                  fuelCutRpm={ecuConfig.fuelCutRpm}
+                  numCylinders={ecuConfig.numCylinders}
+                />
+              </div>
+            )}
+          </div>
+
+        </div>
+
+        {runFinished && fs && (
+          <div className="mx-3 mb-2 p-3" style={{ border: `1px solid ${t.border}` }} data-testid="results-overlay">
             <div className="text-center mb-3">
-              <span className="text-[10px] tracking-[0.4em] uppercase opacity-60 font-mono">QUARTER MILE RESULTS</span>
+              <span className="text-[10px] tracking-[0.4em] uppercase font-mono" style={{ color: t.textDim }}>
+                {fs.topSpeedMode ? 'TOP SPEED RUN RESULTS' : 'QUARTER MILE RESULTS'}
+              </span>
             </div>
-            <ResultRow label="1/4 Mile ET" value={fs.quarterMileET} unit="sec" testId="result-et" large />
-            <ResultRow label="Trap Speed" value={fs.trapSpeed} unit="mph" testId="result-trap" large />
-            <div className="h-px bg-white/15 my-2" />
-            <ResultRow label="60 ft" value={fs.sixtyFootTime} unit="sec" testId="result-60ft" />
-            <ResultRow label="330 ft" value={fs.threeThirtyTime} unit="sec" testId="result-330ft" />
-            <ResultRow label="1/8 Mile" value={fs.eighthMileTime} unit="sec" testId="result-eighth" />
-            <ResultRow label="1000 ft" value={fs.thousandFootTime} unit="sec" testId="result-1000ft" />
-            <div className="h-px bg-white/15 my-2" />
-            <ResultRow label="Peak RPM" value={fs.peakRpm} unit="rpm" testId="result-rpm" />
-            <ResultRow label="Peak WHP" value={fs.peakWheelHp} unit="hp" testId="result-whp" />
-            <ResultRow label="Peak G" value={fs.peakAccelG} unit="g" testId="result-g" />
-            <ResultRow label="Peak Boost" value={fs.peakBoostPsi} unit="psi" testId="result-boost" />
-            <ResultRow label="Top Speed" value={fs.peakSpeedMph} unit="mph" testId="result-speed" />
-            <ResultRow label="Final Gear" value={fs.currentGearDisplay} unit="" testId="result-gear" />
-            <ResultRow label="Peak Slip" value={fs.peakSlipPercent} unit="%" testId="result-slip" />
+            {fs.topSpeedMode ? (
+              <>
+                <ResultRow label="Top Speed" value={fs.topSpeedMph} unit="mph" testId="result-topspeed" large />
+                <ResultRow label="Time to Vmax" value={fs.elapsedTime} unit="sec" testId="result-vmax-time" large />
+                <div className="h-px bg-white/15 my-2" />
+                <ResultRow label="Distance" value={fs.topSpeedDistanceMi} unit="mi" testId="result-distance" />
+                <ResultRow label="0-60 mph" value={fs.sixtyFootTime ? null : '—'} unit="" testId="result-ts-060" />
+                <ResultRow label="60 ft" value={fs.sixtyFootTime} unit="sec" testId="result-ts-60ft" />
+                <ResultRow label="1/4 Mile" value={fs.eighthMileTime ? ((fs.thousandFootTime || 0) * 1.32).toFixed(3) : null} unit="" testId="result-ts-qm" />
+                <div className="h-px bg-white/15 my-2" />
+                <ResultRow label="Peak RPM" value={fs.peakRpm} unit="rpm" testId="result-ts-rpm" />
+                <ResultRow label="Peak WHP" value={fs.peakWheelHp} unit="hp" testId="result-ts-whp" />
+                <ResultRow label="Peak G" value={fs.peakAccelG} unit="g" testId="result-ts-g" />
+                <ResultRow label="Peak Boost" value={fs.peakBoostPsi} unit="psi" testId="result-ts-boost" />
+                <ResultRow label="Final Gear" value={fs.currentGearDisplay} unit="" testId="result-ts-gear" />
+                <ResultRow label="Peak Slip" value={fs.peakSlipPercent} unit="%" testId="result-ts-slip" />
+              </>
+            ) : (
+              <>
+                <ResultRow label="1/4 Mile ET" value={fs.quarterMileET} unit="sec" testId="result-et" large />
+                <ResultRow label="Trap Speed" value={fs.trapSpeed} unit="mph" testId="result-trap" large />
+                <div className="h-px bg-white/15 my-2" />
+                <ResultRow label="60 ft" value={fs.sixtyFootTime} unit="sec" testId="result-60ft" />
+                <ResultRow label="330 ft" value={fs.threeThirtyTime} unit="sec" testId="result-330ft" />
+                <ResultRow label="1/8 Mile" value={fs.eighthMileTime} unit="sec" testId="result-eighth" />
+                <ResultRow label="1000 ft" value={fs.thousandFootTime} unit="sec" testId="result-1000ft" />
+                <div className="h-px bg-white/15 my-2" />
+                <ResultRow label="Peak RPM" value={fs.peakRpm} unit="rpm" testId="result-rpm" />
+                <ResultRow label="Peak WHP" value={fs.peakWheelHp} unit="hp" testId="result-whp" />
+                <ResultRow label="Peak G" value={fs.peakAccelG} unit="g" testId="result-g" />
+                <ResultRow label="Peak Boost" value={fs.peakBoostPsi} unit="psi" testId="result-boost" />
+                <ResultRow label="Top Speed" value={fs.peakSpeedMph} unit="mph" testId="result-speed" />
+                <ResultRow label="Final Gear" value={fs.currentGearDisplay} unit="" testId="result-gear" />
+                <ResultRow label="Peak Slip" value={fs.peakSlipPercent} unit="%" testId="result-slip" />
+              </>
+            )}
             <div className="mt-3">
               <Button
                 onClick={handleReset}
                 variant="outline"
-                className="w-full text-[11px] tracking-[0.2em] uppercase font-mono bg-transparent text-white/90 border-white/30"
+                className="w-full text-[11px] tracking-[0.2em] uppercase font-mono bg-transparent"
+                style={{ color: t.textMuted, borderColor: t.border }}
                 data-testid="button-new-run"
               >
                 NEW RUN
@@ -1619,7 +2273,21 @@ export default function Dashboard() {
         )}
 
         {/* Porsche Gauge Cluster */}
-        <PorscheGaugeCluster rpm={state.rpm} speedMph={state.speedMph} wheelSpeedMph={state.wheelSpeedMph} redline={8000} />
+        <PorscheGaugeCluster rpm={state.rpm} speedMph={state.speedMph} wheelSpeedMph={state.wheelSpeedMph} redline={8000} horsepower={state.horsepower} torque={state.torque} />
+
+        {/* ── Drag Strip Progress Bar ── */}
+        <DragStripProgress
+          distanceFt={state.distanceFt}
+          quarterMileActive={state.quarterMileActive}
+          quarterMileLaunched={state.quarterMileLaunched}
+          qmFinished={qmFinished}
+          speedMph={state.speedMph}
+          elapsedTime={state.elapsedTime}
+          sixtyFootTime={state.sixtyFootTime}
+          eighthMileTime={state.eighthMileTime}
+          quarterMileET={state.quarterMileET}
+          topSpeedMode={runMode === 'topspeed'}
+        />
 
         {/* Tire Visual */}
         <WheelVisual 
@@ -1636,81 +2304,32 @@ export default function Dashboard() {
           turboEnabled={state.turboEnabled}
         />
 
-          {/* ── Dyno Curve Editor ── */}
-          <div className="col-span-4 px-3 py-2">
-            <button
-              onClick={() => setDynoOpen(o => !o)}
-              className="w-full flex items-center justify-between py-1.5 px-2 text-[10px] tracking-[0.2em] uppercase font-mono border border-white/15 hover:border-white/30 transition-colors"
-              style={{ background: dynoOpen ? '#111' : 'transparent' }}
-            >
-              <span className="flex items-center gap-2">
-                <span style={{ color: '#f59e0b', opacity: 0.8 }}>📈</span>
-                <span className="opacity-60">DYNO CURVE EDITOR</span>
-                {customTorqueMap && <span className="text-amber-400/80 text-[8px]">● TUNED</span>}
-              </span>
-              <span className="opacity-40">{dynoOpen ? '▼' : '▶'}</span>
-            </button>
-            {dynoOpen && (
-              <div className="mt-2 pb-1">
-                <DynoCurveEditor
-                  customMap={customTorqueMap}
-                  onChange={handleTorqueMapChange}
-                  onReset={handleTorqueMapReset}
-                  currentRpm={state.rpm}
-                  currentTorque={state.torque}
-                  currentHp={state.horsepower}
-                />
+        {/* ── Top speed live HUD (while running) ── */}
+        {state.topSpeedMode && state.quarterMileLaunched && !state.topSpeedReached && (
+          <div className="mx-3 mb-1 border border-cyan-500/30 p-2 bg-cyan-950/20">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] tracking-[0.3em] uppercase opacity-50 font-mono">TOP SPEED RUN</span>
+              <span className="text-[9px] tracking-wider uppercase font-mono text-cyan-400/70">{state.topSpeedDistanceMi} mi</span>
+            </div>
+            <div className="flex items-center justify-center gap-6 mt-1">
+              <div className="text-center">
+                <div className="text-2xl font-mono tabular-nums text-cyan-400">{state.speedMph}</div>
+                <div className="text-[8px] uppercase opacity-40">mph</div>
               </div>
-            )}
+              <div className="text-center">
+                <div className="text-lg font-mono tabular-nums text-white/80">{state.peakSpeedMph}</div>
+                <div className="text-[8px] uppercase opacity-40">peak</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-mono tabular-nums text-white/60">{state.elapsedTime}s</div>
+                <div className="text-[8px] uppercase opacity-40">time</div>
+              </div>
+            </div>
           </div>
-
-          {/* FWD Drivetrain Visual (Front 3/4 View) */}
-          <div className="flex flex-col items-center py-2 col-span-4">
-            <FWDDrivetrainVisual
-              tireRpm={state.tireRpm}
-              driveshaftRpm={state.driveshaftRpm}
-              currentGear={state.currentGearDisplay}
-              currentGearRatio={state.currentGearRatio}
-              tireWidthMm={195}
-              tireAspectRatio={55}
-              rimDiameterIn={15}
-              slipPct={state.tireSlipPercent}
-              clutchStatus={state.clutchStatus}
-              rpm={state.rpm}
-            />
-          </div>
-
-          {/* 3D Interactive Drivetrain View */}
-          <div className="flex flex-col items-center py-2 col-span-4">
-            <DrivetrainErrorBoundary>
-              <Suspense fallback={
-                <div style={{
-                  width: '100%', maxWidth: 960, height: 480, margin: '0 auto',
-                  background: '#111', borderRadius: 12, border: '1px solid #222',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#555', fontFamily: 'monospace', fontSize: 12,
-                }}>
-                  Loading 3D drivetrain view...
-                </div>
-              }>
-                <DrivetrainView3D
-                  tireRpm={state.tireRpm}
-                  rpm={state.rpm}
-                  clutchStatus={state.clutchStatus}
-                  clutchSlipPct={state.clutchSlipPct}
-                  currentGear={state.currentGearDisplay}
-                  currentGearRatio={state.currentGearRatio}
-                  slipPct={state.tireSlipPercent}
-                  drivetrainType={state.drivetrainType}
-                  accelerationG={state.accelerationG}
-                  throttle={state.throttlePosition}
-                />
-              </Suspense>
-            </DrivetrainErrorBoundary>
-          </div>
+        )}
 
         <DragContext.Provider value={dragContextValue}>
-          <div className="grid grid-cols-4 gap-0" data-testid="gauge-grid">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-0" data-testid="gauge-grid">
             {(() => {
               // Define all gauge configurations
               const gaugeConfigs: Record<string, { label: string; value: string | number; unit: string; testId: string; highlight?: boolean; section?: string }> = {
@@ -1771,10 +2390,12 @@ export default function Dashboard() {
                 'speed-kmh': { label: 'Speed', value: state.speedKmh, unit: 'km/h', testId: 'gauge-speed-kmh' },
                 'distance': { label: 'Distance', value: state.distanceFt, unit: 'ft', testId: 'gauge-distance' },
                 'distance-m': { label: 'Distance', value: state.distanceMeters, unit: 'm', testId: 'gauge-distance-m' },
+                'distance-mi': { label: 'Distance', value: state.topSpeedDistanceMi, unit: 'mi', testId: 'gauge-distance-mi' },
                 'tire-rpm': { label: 'Tire RPM', value: state.tireRpm, unit: 'rev/min', testId: 'gauge-tire-rpm' },
                 'elapsed': { label: 'Elapsed', value: state.elapsedTime, unit: 'sec', testId: 'gauge-elapsed' },
                 'qm-et': { label: '1/4 ET', value: fmt(state.quarterMileET), unit: 'sec', testId: 'gauge-qm-et', highlight: qmFinished },
                 'trap-speed': { label: 'Trap Spd', value: fmt(state.trapSpeed), unit: 'mph', testId: 'gauge-trap-speed', highlight: qmFinished },
+                'top-speed': { label: 'Top Speed', value: state.topSpeedMph !== null ? state.topSpeedMph : state.peakSpeedMph, unit: 'mph', testId: 'gauge-top-speed', highlight: state.topSpeedReached },
                 // Split Times
                 '60ft': { label: '60 ft', value: fmt(state.sixtyFootTime), unit: 'sec', testId: 'gauge-60ft', section: 'Split Times' },
                 '330ft': { label: '330 ft', value: fmt(state.threeThirtyTime), unit: 'sec', testId: 'gauge-330ft' },
@@ -1846,7 +2467,7 @@ export default function Dashboard() {
             })()}
 
             {aiMode && aiNotes && (
-              <div className="col-span-4 px-3 py-2" data-testid="ai-notes-section">
+              <div className="col-span-2 sm:col-span-4 px-3 py-2" data-testid="ai-notes-section">
                 <div className="border border-green-500/30 px-2 py-1.5">
                   <span className="text-[8px] tracking-[0.2em] uppercase text-green-400/80 font-mono block mb-1">AI PHYSICS NOTES</span>
                   <span className="text-[9px] font-mono text-green-300/70 leading-tight block" data-testid="text-ai-notes">{aiNotes}</span>
@@ -1854,28 +2475,98 @@ export default function Dashboard() {
               </div>
             )}
 
-            <div className="col-span-4 h-4" />
+            <div className="col-span-2 sm:col-span-4 h-4" />
           </div>
         </DragContext.Provider>
+
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* ── LIVE DRIVETRAIN VIEWS (always visible, synced to sim) ─ */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <div className="px-3 pt-2 pb-2" data-testid="live-drivetrain-views">
+          <div className="flex items-center gap-2 pb-1 mb-1" style={{ borderBottom: `1px solid ${t.borderFaint}` }}>
+            <span style={{ opacity: 0.7 }}>⚙</span>
+            <span className="text-[9px] tracking-[0.3em] uppercase font-mono" style={{ color: t.textDim }}>LIVE DRIVETRAIN</span>
+            <span className="text-[8px] font-mono tabular-nums" style={{ color: t.accent }}>{state.rpm} RPM</span>
+            <span className="text-[8px] font-mono" style={{ color: t.textDim }}>• G{state.currentGearDisplay} • {state.speedMph} MPH</span>
+          </div>
+          <div className="flex flex-col items-center py-1">
+            <FWDDrivetrainVisual
+              tireRpm={state.tireRpm}
+              driveshaftRpm={state.driveshaftRpm}
+              currentGear={state.currentGearDisplay}
+              currentGearRatio={state.currentGearRatio}
+              tireWidthMm={195}
+              tireAspectRatio={55}
+              rimDiameterIn={15}
+              slipPct={state.tireSlipPercent}
+              clutchStatus={state.clutchStatus}
+              rpm={state.rpm}
+            />
+          </div>
+          <div className="flex flex-col items-center py-1 mt-1">
+            <DrivetrainErrorBoundary>
+              <Suspense fallback={
+                <div style={{
+                  width: '100%', maxWidth: 960, height: 280, margin: '0 auto',
+                  background: t.cardBg, borderRadius: 12, border: `1px solid ${t.border}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: t.textDim, fontFamily: 'monospace', fontSize: 12,
+                }}>
+                  Loading 3D drivetrain view...
+                </div>
+              }>
+                <DrivetrainView3D
+                  tireRpm={state.tireRpm}
+                  rpm={state.rpm}
+                  clutchStatus={state.clutchStatus}
+                  clutchSlipPct={state.clutchSlipPct}
+                  currentGear={state.currentGearDisplay}
+                  currentGearRatio={state.currentGearRatio}
+                  slipPct={state.tireSlipPercent}
+                  drivetrainType={state.drivetrainType}
+                  accelerationG={state.accelerationG}
+                  throttle={state.throttlePosition}
+                  engineId={ecuConfig.engineId}
+                  numCylinders={ecuConfig.numCylinders}
+                  redlineRpm={ecuConfig.redlineRpm}
+                  gearRatios={ecuConfig.gearRatios}
+                  finalDriveRatio={ecuConfig.finalDriveRatio}
+                  transmissionModel={ecuConfig.transmissionModel}
+                  tireWidthMm={ecuConfig.tireWidthMm}
+                  tireAspectRatio={ecuConfig.tireAspectRatio}
+                  wheelDiameterIn={ecuConfig.tireWheelDiameterIn}
+                  speedMph={state.speedMph}
+                  topSpeedMode={state.topSpeedMode}
+                  quarterMileLaunched={state.quarterMileLaunched}
+                  quarterMileActive={state.quarterMileActive}
+                  distanceFt={state.distanceFt}
+                />
+              </Suspense>
+            </DrivetrainErrorBoundary>
+          </div>
+        </div>
       </div>
 
-      <div className="shrink-0 px-4 pb-3 pt-2 border-t border-white/20 bg-black" data-testid="controls-area">
+      <div className="shrink-0 px-4 pb-3 pt-2" style={{ borderTop: `1px solid ${t.border}`, background: t.bottomBg }} data-testid="controls-area">
         <div className="flex items-center gap-3">
-          <span className="text-[9px] tracking-wider uppercase opacity-70 font-mono w-16">Throttle</span>
+          <span className="text-[9px] tracking-wider uppercase font-mono w-16 shrink-0" style={{ color: t.textDim }}>Throttle</span>
           <input
             type="range"
             min="0"
             max="100"
             value={throttle}
             onChange={handleThrottle}
-            className="flex-1 h-1 appearance-none bg-white/20 rounded-none outline-none cursor-pointer disabled:opacity-30"
+            className="flex-1 appearance-none bg-transparent rounded-none outline-none cursor-pointer disabled:opacity-30"
             style={{
               WebkitAppearance: "none",
-              background: `linear-gradient(to right, white ${throttle}%, rgba(255,255,255,0.2) ${throttle}%)`,
+              background: `linear-gradient(to right, ${t.text} ${throttle}%, ${t.border} ${throttle}%)`,
+              backgroundSize: '100% 4px',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
             }}
             data-testid="input-throttle"
           />
-          <span className="text-[11px] font-mono tabular-nums w-8 text-right opacity-80" data-testid="text-throttle-value">{Math.round(throttle)}%</span>
+          <span className="text-[11px] font-mono tabular-nums w-8 text-right shrink-0" style={{ color: t.textMuted }} data-testid="text-throttle-value">{Math.round(throttle)}%</span>
         </div>
 
         {/* Clutch status indicator when staging */}
@@ -1890,15 +2581,38 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Run mode selector — only when not active */}
+        {!state.quarterMileActive && (
+          <div className="flex gap-1 mt-2">
+            <button
+              onClick={() => setRunMode('quarter')}
+              className="flex-1 text-[10px] tracking-[0.15em] uppercase font-mono py-1.5 border transition-colors min-h-[44px] sm:min-h-0"
+              style={runMode === 'quarter' ? { borderColor: t.activeBorder, color: t.activeText, background: t.btnHover } : { borderColor: t.borderFaint, color: t.inactiveText }}
+              data-testid="mode-quarter"
+            >
+              🏁 1/4 MILE
+            </button>
+            <button
+              onClick={() => setRunMode('topspeed')}
+              className="flex-1 text-[10px] tracking-[0.15em] uppercase font-mono py-1.5 border transition-colors min-h-[44px] sm:min-h-0"
+              style={runMode === 'topspeed' ? { borderColor: 'rgba(6,182,212,0.6)', color: '#22d3ee', background: 'rgba(8,51,68,0.3)' } : { borderColor: t.borderFaint, color: t.inactiveText }}
+              data-testid="mode-topspeed"
+            >
+              🚀 TOP SPEED
+            </button>
+          </div>
+        )}
+
         {!state.quarterMileActive ? (
           // Not staged yet
           <Button
             onClick={handleStage}
             variant="outline"
-            className="w-full mt-2 text-[11px] tracking-[0.2em] uppercase font-mono bg-transparent text-white/90 border-white/30"
+            className="w-full mt-2 text-[11px] tracking-[0.2em] uppercase font-mono bg-transparent"
+            style={{ color: t.textMuted, borderColor: t.border }}
             data-testid="button-stage"
           >
-            STAGE — PULL TO LINE
+            {runMode === 'topspeed' ? 'STAGE — TOP SPEED RUN' : 'STAGE — PULL TO LINE'}
           </Button>
         ) : !state.quarterMileLaunched ? (
           // Staged, waiting to launch
@@ -1910,12 +2624,13 @@ export default function Dashboard() {
           >
             🚦 LAUNCH! (DUMP CLUTCH)
           </Button>
-        ) : qmFinished ? (
+        ) : qmFinished || tsFinished ? (
           // Finished
           <Button
             onClick={handleReset}
             variant="outline"
-            className="w-full mt-2 text-[11px] tracking-[0.2em] uppercase font-mono bg-transparent text-white/90 border-white/30"
+            className="w-full mt-2 text-[11px] tracking-[0.2em] uppercase font-mono bg-transparent"
+            style={{ color: t.textMuted, borderColor: t.border }}
             data-testid="button-new-run"
           >
             NEW RUN
@@ -1942,27 +2657,30 @@ export default function Dashboard() {
             top: contextMenu.y,
             zIndex: 9999,
             minWidth: 180,
+            background: t.navBg,
+            border: `1px solid ${t.border}`,
           }}
-          className="bg-[#1a1a2e] border border-white/20 rounded shadow-xl font-mono text-[10px]"
+          className="rounded shadow-xl font-mono text-[10px]"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="px-3 py-1.5 border-b border-white/10 text-white/50 uppercase tracking-wider text-[8px]">
+          <div className="px-3 py-1.5 uppercase tracking-wider text-[8px]" style={{ borderBottom: `1px solid ${t.borderFaint}`, color: t.textDim }}>
             Gauge: {contextMenu.gaugeId}
           </div>
           <button
-            className="w-full text-left px-3 py-1.5 hover:bg-white/10 text-white/80"
+            className="w-full text-left px-3 py-1.5"
+            style={{ color: t.textMuted }}
             onClick={() => hideGauge(contextMenu.gaugeId)}
           >
             🚫 Hide this gauge
           </button>
-          <div className="px-3 py-1 border-t border-white/5">
-            <span className="text-white/40 text-[8px] uppercase">Color</span>
+          <div className="px-3 py-1" style={{ borderTop: `1px solid ${t.borderFaint}` }}>
+            <span className="text-[8px] uppercase" style={{ color: t.textDim }}>Color</span>
             <div className="flex gap-1 mt-1 mb-1">
               {['#ffffff', '#a3e635', '#ff6b6b', '#60a5fa', '#f59e0b', '#c084fc', '#22d3ee', '#fb923c'].map(c => (
                 <button
                   key={c}
-                  className="w-4 h-4 rounded-full border border-white/20 hover:scale-125 transition-transform"
-                  style={{ background: c }}
+                  className="w-4 h-4 rounded-full hover:scale-125 transition-transform"
+                  style={{ background: c, border: `1px solid ${t.border}` }}
                   onClick={() => setGaugeColor(contextMenu.gaugeId, c)}
                 />
               ))}
@@ -1970,7 +2688,8 @@ export default function Dashboard() {
           </div>
           {gaugeColors[contextMenu.gaugeId] && (
             <button
-              className="w-full text-left px-3 py-1.5 hover:bg-white/10 text-white/60 border-t border-white/5"
+              className="w-full text-left px-3 py-1.5"
+              style={{ color: t.textDim, borderTop: `1px solid ${t.borderFaint}` }}
               onClick={() => resetGaugeColor(contextMenu.gaugeId)}
             >
               ↩ Reset color
@@ -1978,14 +2697,16 @@ export default function Dashboard() {
           )}
           {hiddenGauges.size > 0 && (
             <button
-              className="w-full text-left px-3 py-1.5 hover:bg-white/10 text-green-400/80 border-t border-white/5"
+              className="w-full text-left px-3 py-1.5 text-green-400/80"
+              style={{ borderTop: `1px solid ${t.borderFaint}` }}
               onClick={showAllGauges}
             >
               👁 Show all hidden ({hiddenGauges.size})
             </button>
           )}
           <button
-            className="w-full text-left px-3 py-1.5 hover:bg-white/10 text-red-400/60 border-t border-white/5"
+            className="w-full text-left px-3 py-1.5 text-red-400/60"
+            style={{ borderTop: `1px solid ${t.borderFaint}` }}
             onClick={resetAllGauges}
           >
             ⟳ Reset all gauges
