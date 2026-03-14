@@ -4551,6 +4551,17 @@ export const DrivetrainView3D = memo(function DrivetrainView3D(props: Drivetrain
   if (prevProps.tireWidthMm !== nextProps.tireWidthMm) return false;
   if (prevProps.tireAspectRatio !== nextProps.tireAspectRatio) return false;
   if (prevProps.wheelDiameterIn !== nextProps.wheelDiameterIn) return false;
+  // Allow re-render when engine builder overrides change
+  const po = prevProps.engineOverrides;
+  const no = nextProps.engineOverrides;
+  if (po !== no) {
+    if (!po || !no) return false;
+    if (po.boreMm !== no.boreMm || po.strokeMm !== no.strokeMm ||
+        po.numCylinders !== no.numCylinders || po.connectingRodLenMm !== no.connectingRodLenMm ||
+        po.intakeValveDiaMm !== no.intakeValveDiaMm || po.exhaustValveDiaMm !== no.exhaustValveDiaMm ||
+        po.valveStemDiaMm !== no.valveStemDiaMm || po.deckHeightMm !== no.deckHeightMm ||
+        po.compressionRatio !== no.compressionRatio) return false;
+  }
   // Block re-render for fast-changing animation props — those flow through module-level store
   return true;
 });

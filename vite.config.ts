@@ -1,6 +1,15 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "tailwindcss";
+import autoprefixer from "autoprefixer";
 import path from "path";
+
+// Suppress known Tailwind CSS v3 PostCSS warning (fixed in v4, not backported)
+const _origWarn = console.warn;
+console.warn = (...args: any[]) => {
+  if (typeof args[0] === 'string' && args[0].includes('postcss.parse')) return;
+  _origWarn(...args);
+};
 
 export default defineConfig({
   plugins: [
@@ -17,6 +26,14 @@ export default defineConfig({
         ]
       : []),
   ],
+  css: {
+    postcss: {
+      plugins: [
+        tailwindcss(),
+        autoprefixer(),
+      ],
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
