@@ -204,18 +204,73 @@ export default function EngineBuilderPage() {
         </div>
       </div>
 
-      {/* Main content: sliders left, 3D right */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {/* Left panel — sliders */}
+      {/* Main content: stacked on mobile (3D top, sliders bottom), side-by-side on desktop */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {/* 3D engine view — top on mobile */}
+        <div
+          className="engine-builder-3d"
+          style={{
+            position: "relative",
+            minHeight: 220,
+            height: "40vh",
+            flexShrink: 0,
+            borderBottom: `1px solid ${t.borderFaint}`,
+          }}
+        >
+          <Suspense
+            fallback={
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: t.textDim,
+                  fontFamily: "monospace",
+                  fontSize: 11,
+                }}
+              >
+                Loading 3D engine view...
+              </div>
+            }
+          >
+            <DrivetrainView3D
+              tireRpm={0}
+              rpm={900}
+              clutchStatus="engaged"
+              clutchSlipPct={0}
+              currentGear={0}
+              currentGearRatio={1}
+              slipPct={0}
+              drivetrainType="fwd"
+              accelerationG={0}
+              throttle={5}
+              engineId={config.engineId}
+              numCylinders={overrides.numCylinders ?? config.numCylinders}
+              redlineRpm={config.redlineRpm}
+              gearRatios={config.gearRatios}
+              finalDriveRatio={config.finalDriveRatio}
+              transmissionModel={config.transmissionModel}
+              tireWidthMm={config.tireWidthMm}
+              tireAspectRatio={config.tireAspectRatio}
+              wheelDiameterIn={config.tireWheelDiameterIn}
+              speedMph={0}
+              topSpeedMode={false}
+              quarterMileLaunched={false}
+              quarterMileActive={false}
+              distanceFt={0}
+              engineOverrides={overrides}
+            />
+          </Suspense>
+        </div>
+
+        {/* Sliders panel — scrollable below 3D view */}
         <div
           style={{
-            width: 320,
-            minWidth: 280,
-            maxWidth: 400,
+            flex: 1,
             overflowY: "auto",
-            borderRight: `1px solid ${t.borderFaint}`,
             padding: "12px 16px",
-            flexShrink: 0,
           }}
         >
           {/* Derived specs summary */}
@@ -271,56 +326,6 @@ export default function EngineBuilderPage() {
               })}
             </div>
           ))}
-        </div>
-
-        {/* Right panel — 3D engine view */}
-        <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
-          <Suspense
-            fallback={
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: t.textDim,
-                  fontFamily: "monospace",
-                  fontSize: 11,
-                }}
-              >
-                Loading 3D engine view...
-              </div>
-            }
-          >
-            <DrivetrainView3D
-              tireRpm={0}
-              rpm={900}
-              clutchStatus="engaged"
-              clutchSlipPct={0}
-              currentGear={0}
-              currentGearRatio={1}
-              slipPct={0}
-              drivetrainType="fwd"
-              accelerationG={0}
-              throttle={5}
-              engineId={config.engineId}
-              numCylinders={overrides.numCylinders ?? config.numCylinders}
-              redlineRpm={config.redlineRpm}
-              gearRatios={config.gearRatios}
-              finalDriveRatio={config.finalDriveRatio}
-              transmissionModel={config.transmissionModel}
-              tireWidthMm={config.tireWidthMm}
-              tireAspectRatio={config.tireAspectRatio}
-              wheelDiameterIn={config.tireWheelDiameterIn}
-              speedMph={0}
-              topSpeedMode={false}
-              quarterMileLaunched={false}
-              quarterMileActive={false}
-              distanceFt={0}
-              engineOverrides={overrides}
-            />
-          </Suspense>
         </div>
       </div>
     </div>
