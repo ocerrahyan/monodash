@@ -14,6 +14,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/analyze", label: "ANALYZE" },
   { href: "/dyno",    label: "DYNO" },
   { href: "/social",  label: "SOCIAL",  aliases: ["/friends"] },
+  { href: "/builder", label: "BUILD",  accentColor: "#22d3ee" },
   { href: "/export",  label: "EXPORT" },
   { href: "/admin",   label: "ADMIN",   accentColor: "#eab308" },
 ];

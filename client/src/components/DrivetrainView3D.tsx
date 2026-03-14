@@ -35,6 +35,7 @@ interface PropsStore {
   quarterMileLaunched: boolean;
   quarterMileActive: boolean;
   distanceFt: number;
+  engineOverrides: EngineBuilderOverrides | null;
 }
 
 // Module-level store — always mutable, always current
@@ -47,6 +48,7 @@ const _drivetrainStore: PropsStore = {
   tireAspectRatio: 55, wheelDiameterIn: 15,
   speedMph: 0, topSpeedMode: false, quarterMileLaunched: false,
   quarterMileActive: false, distanceFt: 0,
+  engineOverrides: null,
 };
 
 // Stable ref wrapper so existing context consumers still work
@@ -82,6 +84,7 @@ export function syncDrivetrainStore(p: DrivetrainView3DProps): void {
   s.quarterMileLaunched = p.quarterMileLaunched ?? false;
   s.quarterMileActive = p.quarterMileActive ?? false;
   s.distanceFt = p.distanceFt ?? 0;
+  s.engineOverrides = p.engineOverrides ?? null;
 }
 
 // ── Engine geometry context (computed from active engine preset) ──────
@@ -715,23 +718,28 @@ export interface EngineGeometry {
 }
 
 /**
- * Compute engine geometry from an EnginePreset
+ * Compute engine geometry from an EnginePreset, with optional live overrides
  * Converts bore/stroke/cylinders/layout into all 3D dimensions needed for rendering
  */
-export function computeEngineGeometry(preset: EnginePreset): EngineGeometry {
+export function computeEngineGeometry(preset: EnginePreset, overrides?: EngineBuilderOverrides | null): EngineGeometry {
   const S = 0.01;  // mm → scene units
   
-  // Core dimensions from preset
-  const bore = preset.bore * S;
-  const stroke = preset.stroke * S;
+  // Apply overrides on top of preset values (overrides are in mm)
+  const boreMM = overrides?.boreMm ?? preset.bore;
+  const strokeMM = overrides?.strokeMm ?? preset.stroke;
+  const cylCount = overrides?.numCylinders ?? preset.cylinders;
+  
+  // Core dimensions
+  const bore = boreMM * S;
+  const stroke = strokeMM * S;
   
   // Bore spacing: typically bore + 6-8mm for siamesed bores
   // More for larger bores, less for small displacement engines
-  const boreSpacing = (preset.bore + Math.max(6, preset.bore * 0.08)) * S;
+  const boreSpacing = (boreMM + Math.max(6, boreMM * 0.08)) * S;
   
-  // Con rod length: typically 1.6-1.8x stroke for street engines
-  // Shorter rod ratio for high-RPM engines
-  const conRodLen = stroke * 1.73;  // ~134mm for B16A2 (77.4 stroke)
+  // Con rod length: use override or ~1.73x stroke
+  const conRodLenMM = overrides?.connectingRodLenMm ?? (strokeMM * 1.73);
+  const conRodLen = conRodLenMM * S;
   
   const crankThrow = stroke / 2;
   const pistonH = bore * 0.37;  // Piston height ~37% of bore
@@ -742,7 +750,6 @@ export function computeEngineGeometry(preset: EnginePreset): EngineGeometry {
   let blockDeckH: number;
   let bankAngle = 0;
   
-  const cylCount = preset.cylinders;
   const layout = preset.layout;
   
   // Calculate block length based on cylinder count and layout
@@ -886,10 +893,13 @@ export function computeEngineGeometry(preset: EnginePreset): EngineGeometry {
     }
   }
   
-  // Valve dimensions (scale with bore)
-  const intakeValveDia = bore * 0.407;   // ~33mm for 81mm bore
-  const exhaustValveDia = bore * 0.358;  // ~29mm
-  const valveStemDia = bore * 0.068;     // ~5.5mm
+  // Valve dimensions — use overrides when provided, else scale with bore
+  const intakeValveDiaMM = overrides?.intakeValveDiaMm ?? (boreMM * 0.407);
+  const exhaustValveDiaMM = overrides?.exhaustValveDiaMm ?? (boreMM * 0.358);
+  const valveStemDiaMM = overrides?.valveStemDiaMm ?? (boreMM * 0.068);
+  const intakeValveDia = intakeValveDiaMM * S;
+  const exhaustValveDia = exhaustValveDiaMM * S;
+  const valveStemDia = valveStemDiaMM * S;
   const valveStemLen = bore * 1.235;     // ~100mm
   const valveHeadThick = bore * 0.025;   // ~2mm
   const valveSpringOR = bore * 0.198;    // ~16mm
@@ -902,9 +912,9 @@ export function computeEngineGeometry(preset: EnginePreset): EngineGeometry {
   const camSprocketR = bore * 0.68;     // ~55mm (2:1 ratio)
   const tensionerR = bore * 0.15;       // ~12mm
   
-  // Throttle body (scales with displacement)
-  const dispCC = preset.displacement;
-  const tbDia = Math.sqrt(dispCC / 1000) * 45 * S;  // Roughly 62mm for 1.6L
+  // Throttle body (scales with actual displacement)
+  const actualDispCC = (Math.PI / 4) * (boreMM ** 2) * strokeMM * cylCount / 1000;
+  const tbDia = Math.sqrt(actualDispCC / 1000) * 45 * S;
   
   // Flywheel/clutch (scales with torque potential)
   const torqueFactor = Math.sqrt(preset.maxTq / 111);  // Normalized to B16A2
@@ -975,6 +985,20 @@ export const DEFAULT_ENGINE_GEOMETRY = computeEngineGeometry(ENGINE_PRESETS[0]);
 // ═══════════════════════════════════════════════════════════════════════════
 // PROP TYPES
 // ═══════════════════════════════════════════════════════════════════════════
+/** Engine builder dimension overrides — each field (in mm) replaces the preset value when present */
+export interface EngineBuilderOverrides {
+  boreMm?: number;
+  strokeMm?: number;
+  connectingRodLenMm?: number;
+  intakeValveDiaMm?: number;
+  exhaustValveDiaMm?: number;
+  valveStemDiaMm?: number;
+  deckHeightMm?: number;
+  compressionRatio?: number;
+  // layout override (only when cylinder count changes)
+  numCylinders?: number;
+}
+
 export interface DrivetrainView3DProps {
   tireRpm: number;
   rpm: number;
@@ -1001,6 +1025,8 @@ export interface DrivetrainView3DProps {
   quarterMileLaunched?: boolean; // whether the car has launched
   quarterMileActive?: boolean;   // whether QM mode is active (staging or running)
   distanceFt?: number;           // distance traveled in feet
+  // ── Engine builder live overrides ──
+  engineOverrides?: EngineBuilderOverrides;
 }
 
 // safe-number helper — any NaN / Infinity → fallback
@@ -2786,48 +2812,54 @@ function ValveAssembly({
   const spring1Ref = useRef<THREE.Mesh>(null!);
   const spring2Ref = useRef<THREE.Mesh>(null!);
   const animRefs = useContext(AnimationRefsCtx);
+  const geoRef = useContext(EngineGeometryCtx);
 
-  const dia = isIntake ? INTAKE_VALVE_DIA : EXHAUST_VALVE_DIA;
+  const dia = isIntake ? (geoRef.current?.intakeValveDia ?? INTAKE_VALVE_DIA) : (geoRef.current?.exhaustValveDia ?? EXHAUST_VALVE_DIA);
+  const stemDia = geoRef.current?.valveStemDia ?? VALVE_STEM_DIA;
+  const stemLen = geoRef.current?.valveStemLen ?? VALVE_STEM_LEN;
+  const headThick = geoRef.current?.valveHeadThick ?? VALVE_HEAD_THICK;
+  const springOR = geoRef.current?.valveSpringOR ?? VALVE_SPRING_OR;
+  const springIR = geoRef.current?.valveSpringIR ?? VALVE_SPRING_IR;
+  const maxLift = geoRef.current?.valveMaxLift ?? VALVE_MAX_LIFT;
+  const deckH = geoRef.current?.blockDeckH ?? BLOCK_DECK_H;
+  const hH = geoRef.current?.headH ?? HEAD_H;
   const zOff = isIntake ? INTAKE_VALVE_Z_OFFSET : EXHAUST_VALVE_Z_OFFSET;
   const color = isIntake ? '#3b82f6' : '#ef4444';
 
   useFrame(() => {
-    // Read current rotation from shared ref for frame-accurate sync
     const rotationAngle = animRefs?.fwRot?.current ?? 0;
     const crankAngleDeg = ((rotationAngle + phaseAngle) * 180 / Math.PI);
     const liftMm = getValveLift3D(crankAngleDeg, isIntake);
     const liftScene = liftMm * S;
-    // Two valves per side, slight x offset from bore center
     if (valve1Ref.current) valve1Ref.current.position.y = -liftScene;
     if (valve2Ref.current) valve2Ref.current.position.y = -liftScene;
-    // Spring compression
-    const springScale = 1 - liftScene / (VALVE_MAX_LIFT * 1.2);
+    const springScale = 1 - liftScene / (maxLift * 1.2);
     if (spring1Ref.current) spring1Ref.current.scale.y = Math.max(0.6, springScale);
     if (spring2Ref.current) spring2Ref.current.scale.y = Math.max(0.6, springScale);
   });
 
-  const valveXOffsets = [-0.08, 0.08]; // two valves per side
+  const valveXOffsets = [-0.08, 0.08];
 
   return (
-    <group position={[cylinderX, BLOCK_DECK_H + HEAD_H * 0.3, zOff]}>
+    <group position={[cylinderX, deckH + hH * 0.3, zOff]}>
       {valveXOffsets.map((vx, vi) => (
         <group key={vi} position={[vx, 0, 0]}>
           {/* Valve (moves down when opening) */}
           <group ref={vi === 0 ? valve1Ref : valve2Ref}>
             {/* Valve head (tulip) */}
             <mesh position={[0, 0, 0]}>
-              <cylinderGeometry args={[dia / 2, dia / 2 * 0.85, VALVE_HEAD_THICK, 16]} />
+              <cylinderGeometry args={[dia / 2, dia / 2 * 0.85, headThick, 16]} />
               <meshStandardMaterial color={color} metalness={0.8} roughness={0.2} />
             </mesh>
             {/* Valve stem */}
-            <mesh position={[0, VALVE_STEM_LEN / 2 + VALVE_HEAD_THICK / 2, 0]}>
-              <cylinderGeometry args={[VALVE_STEM_DIA / 2, VALVE_STEM_DIA / 2, VALVE_STEM_LEN, 8]} />
+            <mesh position={[0, stemLen / 2 + headThick / 2, 0]}>
+              <cylinderGeometry args={[stemDia / 2, stemDia / 2, stemLen, 8]} />
               <meshStandardMaterial color="#ccc" metalness={0.9} roughness={0.1} />
             </mesh>
           </group>
           {/* Valve spring (compresses with lift) */}
-          <mesh ref={vi === 0 ? spring1Ref : spring2Ref} position={[0, VALVE_STEM_LEN * 0.5, 0]}>
-            <cylinderGeometry args={[VALVE_SPRING_OR, VALVE_SPRING_IR, VALVE_STEM_LEN * 0.5, 12, 1, true]} />
+          <mesh ref={vi === 0 ? spring1Ref : spring2Ref} position={[0, stemLen * 0.5, 0]}>
+            <cylinderGeometry args={[springOR, springIR, stemLen * 0.5, 12, 1, true]} />
             <meshStandardMaterial color="#44aa44" metalness={0.5} roughness={0.4} transparent opacity={0.5} wireframe />
           </mesh>
         </group>
@@ -3157,6 +3189,7 @@ function TimingBelt() {
 // ═══════════════════════════════════════════════════════════════════════════
 function ThrottleButterfly({ throttle }: { throttle: number }) {
   const discRef = useRef<THREE.Mesh>(null!);
+  const geoRef = useContext(EngineGeometryCtx);
 
   useFrame(() => {
     if (discRef.current) {
@@ -3166,21 +3199,24 @@ function ThrottleButterfly({ throttle }: { throttle: number }) {
     }
   });
 
+  const tbDia = geoRef.current?.tbDia ?? TB_DIA;
+  const blockDepth = geoRef.current?.blockD ?? BLOCK_D;
+
   return (
-    <group position={[0, 0, BLOCK_D * 0.5 + 0.35]} rotation={[Math.PI / 2, 0, 0]}>
+    <group position={[0, 0, blockDepth * 0.5 + 0.35]} rotation={[Math.PI / 2, 0, 0]}>
       {/* Throttle body housing */}
       <mesh>
-        <cylinderGeometry args={[TB_DIA / 2 + 0.02, TB_DIA / 2 + 0.02, 0.12, 16, 1, true]} />
+        <cylinderGeometry args={[tbDia / 2 + 0.02, tbDia / 2 + 0.02, 0.12, 16, 1, true]} />
         <meshStandardMaterial color="#666" metalness={0.6} roughness={0.3} side={THREE.DoubleSide} transparent opacity={0.3} />
       </mesh>
       {/* Butterfly disc */}
       <mesh ref={discRef}>
-        <cylinderGeometry args={[TB_DIA / 2 - 0.005, TB_DIA / 2 - 0.005, 0.005, 16]} />
+        <cylinderGeometry args={[tbDia / 2 - 0.005, tbDia / 2 - 0.005, 0.005, 16]} />
         <meshStandardMaterial color="#aaa" metalness={0.8} roughness={0.2} />
       </mesh>
       {/* Shaft */}
       <mesh rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.01, 0.01, TB_DIA + 0.04, 6]} />
+        <cylinderGeometry args={[0.01, 0.01, tbDia + 0.04, 6]} />
         <meshStandardMaterial color="#888" metalness={0.9} roughness={0.1} />
       </mesh>
       <Html center distanceFactor={10} position={[0, 0.15, 0]} style={{ pointerEvents: 'none' }}>
@@ -4172,24 +4208,24 @@ export const DrivetrainView3D = memo(function DrivetrainView3D(props: Drivetrain
     [resolvedEngineId]
   );
 
-  // ── Compute engine geometry from active engine (only recomputes on engine/cylinder change) ──
+  // ── Compute engine geometry from active engine (recomputes on engine/cylinder/override change) ──
   const overrideCyls = props.numCylinders;
+  const builderOverrides = props.engineOverrides;
   const engineGeometry = useMemo(() => {
+    let base = activeEngine;
     if (overrideCyls && overrideCyls !== activeEngine.cylinders) {
       // Create a modified preset with the user's cylinder count and matching layout
       let newLayout = activeEngine.layout;
-      // Adjust layout to match new cylinder count for inline engines
       if (activeEngine.layout.startsWith('I') || activeEngine.layout === 'I4') {
         if (overrideCyls === 3) newLayout = 'I3';
         else if (overrideCyls === 4) newLayout = 'I4';
         else if (overrideCyls === 6) newLayout = 'I6';
-        else newLayout = 'I4'; // fallback — computeEngineGeometry default branch handles arbitrary cylCount
+        else newLayout = 'I4';
       }
-      const modified = { ...activeEngine, cylinders: overrideCyls, layout: newLayout as typeof activeEngine.layout };
-      return computeEngineGeometry(modified);
+      base = { ...activeEngine, cylinders: overrideCyls, layout: newLayout as typeof activeEngine.layout };
     }
-    return computeEngineGeometry(activeEngine);
-  }, [activeEngine, overrideCyls]);
+    return computeEngineGeometry(base, builderOverrides);
+  }, [activeEngine, overrideCyls, builderOverrides]);
   const engineGeometryRef = useRef<EngineGeometry>(engineGeometry);
   engineGeometryRef.current = engineGeometry;
 

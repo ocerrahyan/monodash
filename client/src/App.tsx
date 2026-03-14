@@ -15,6 +15,7 @@ import SetupPage from "@/pages/setup";
 import AnalyzePage from "@/pages/analyze";
 import DynoPage from "@/pages/dyno";
 import SocialPage from "@/pages/social";
+import EngineBuilderPage from "@/pages/engine-builder";
 import { FloatingCommandPanel } from "@/components/FloatingCommandPanel";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { sharedSim } from "@/lib/sharedSim";
@@ -36,6 +37,7 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <Route path="/friends" component={FriendsPage} />
       <Route path="/race/:id" component={RacePage} />
+      <Route path="/builder" component={EngineBuilderPage} />
       <Route path="/admin" component={AdminPage} />
     </Switch>
   );

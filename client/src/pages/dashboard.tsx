@@ -2541,6 +2541,15 @@ export default function Dashboard() {
                   quarterMileLaunched={state.quarterMileLaunched}
                   quarterMileActive={state.quarterMileActive}
                   distanceFt={state.distanceFt}
+                  engineOverrides={{
+                    boreMm: ecuConfig.boreMm,
+                    strokeMm: ecuConfig.strokeMm,
+                    connectingRodLenMm: ecuConfig.connectingRodLenMm,
+                    intakeValveDiaMm: ecuConfig.intakeValveDiaMm,
+                    exhaustValveDiaMm: ecuConfig.exhaustValveDiaMm,
+                    valveStemDiaMm: ecuConfig.valveStemDiaMm,
+                    numCylinders: ecuConfig.numCylinders,
+                  }}
                 />
               </Suspense>
             </DrivetrainErrorBoundary>
